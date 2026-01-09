@@ -1,0 +1,2759 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Course Management System — Single-File Demo</title>
+
+    <!-- Typography: Inter (fallback to system stack) -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap"
+      rel="stylesheet"
+    />
+
+    <!-- Tailwind (CDN) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      // Tailwind config for your palette + radius + spacing (8px base) + dark mode
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            fontFamily: {
+              sans: ["Inter", "ui-sans-serif", "system-ui", "Segoe UI", "Roboto", "Helvetica", "Arial", "sans-serif"],
+            },
+            colors: {
+              primary: "#2563eb",
+              secondary: "#64748b",
+              accent: "#10b981",
+              bg: "#f8fafc",
+              text: "#1e293b",
+            },
+            borderRadius: {
+              lg: "8px",
+            },
+            boxShadow: {
+              card: "0 10px 25px -15px rgba(2,6,23,.25)",
+            },
+            transitionDuration: {
+              300: "300ms",
+            },
+          },
+        },
+      };
+    </script>
+
+    <!-- Minimal base styles -->
+    <style>
+      :root {
+        --primary: #2563eb;
+        --secondary: #64748b;
+        --accent: #10b981;
+        --bg: #f8fafc;
+        --text: #1e293b;
+      }
+      /* Smooth and professional */
+      html {
+        scroll-behavior: smooth;
+      }
+      /* Nice focus rings */
+      :focus-visible {
+        outline: 3px solid rgba(37, 99, 235, 0.35);
+        outline-offset: 2px;
+        border-radius: 8px;
+      }
+      /* Hide scrollbar for small “chip” areas (optional) */
+      .no-scrollbar::-webkit-scrollbar {
+        display: none;
+      }
+      .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      /* “Diff” styling for version history */
+      .diff-add {
+        background: rgba(16, 185, 129, 0.12);
+      }
+      .diff-del {
+        background: rgba(239, 68, 68, 0.12);
+      }
+      /* Accessible skip link */
+      .skip-link {
+        position: absolute;
+        top: -40px;
+        left: 12px;
+        background: #111827;
+        color: white;
+        padding: 10px 12px;
+        border-radius: 8px;
+        z-index: 50;
+        transition: top 0.2s;
+      }
+      .skip-link:focus {
+        top: 12px;
+      }
+    </style>
+  </head>
+
+  <body class="font-sans bg-bg text-text dark:bg-slate-950 dark:text-slate-100">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <div id="root"></div>
+
+    <!-- React + ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+    <!-- Babel (for TS/JSX in-browser). NOTE: for production, build with Vite/Next. -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- TanStack Query (React Query) -->
+    <script src="https://unpkg.com/@tanstack/react-query@5/build/modern/index.production.js"></script>
+
+    <!-- React Hook Form -->
+    <script src="https://unpkg.com/react-hook-form@7/dist/index.umd.js"></script>
+
+    <!-- Framer Motion -->
+    <script src="https://unpkg.com/framer-motion@11/dist/framer-motion.umd.js"></script>
+
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
+    <!-- App (Single-file React + TS via Babel) -->
+    <script type="text/babel" data-presets="react,typescript">
+      /* ===========================
+        Single-file CMS Demo
+        - React 18 + TypeScript
+        - Tailwind UI
+        - TanStack Query (server state)
+        - React Hook Form (forms)
+        - Framer Motion (animations)
+        - Chart.js (analytics)
+        - Dark mode, i18n, RBAC, toasts
+        - Skeletons, infinite scroll, DnD, filter chips, A11y
+        - Realistic folder structure is represented by sections/comments.
+        NOTE: This is a single-file demonstration. In production, split into modules.
+      ============================ */
+
+      const ReactAny = React as any;
+      const { useEffect, useMemo, useRef, useState, useCallback } = React;
+      const { createRoot } = ReactDOM as any;
+      const { motion, AnimatePresence } = (window as any).framerMotion;
+
+      // TanStack Query
+      const {
+        QueryClient,
+        QueryClientProvider,
+        useQuery,
+        useInfiniteQuery,
+        useMutation,
+        useQueryClient,
+      } = (window as any).ReactQuery;
+
+      // React Hook Form
+      const { useForm, Controller } = (window as any).ReactHookForm;
+
+      /* ===========================
+        types.ts
+      ============================ */
+      type Role = "admin" | "instructor" | "student";
+
+      interface User {
+        id: string;
+        name: string;
+        email: string;
+        role: Role;
+        avatarUrl?: string;
+      }
+
+      type EnrollmentStatus = "active" | "pending" | "suspended";
+
+      interface Student {
+        id: string;
+        name: string;
+        email: string;
+        status: EnrollmentStatus;
+        enrolledCourses: number;
+        lastActiveAt: string; // ISO
+        avatarUrl?: string;
+      }
+
+      interface Course {
+        id: string;
+        title: string;
+        category: string;
+        coverUrl: string;
+        progress: number; // 0..100
+        updatedAt: string; // ISO
+        students: number;
+        owner: string; // instructor name
+        tags: string[];
+      }
+
+      interface Activity {
+        id: string;
+        type: "create" | "update" | "enroll" | "export" | "login";
+        message: string;
+        at: string; // ISO
+        actor: { name: string; avatarUrl?: string };
+      }
+
+      interface NotificationItem {
+        id: string;
+        title: string;
+        body: string;
+        at: string;
+        read: boolean;
+      }
+
+      interface ContentVersion {
+        id: string;
+        at: string;
+        author: string;
+        summary: string;
+        diff: Array<{ type: "add" | "del" | "same"; text: string }>;
+      }
+
+      /* ===========================
+        i18n.ts
+      ============================ */
+      type Lang = "en" | "he" | "ru";
+      type Dict = Record<string, Record<Lang, string>>;
+
+      const dict: Dict = {
+        appName: { en: "Course Management", he: "ניהול קורסים", ru: "Управление курсами" },
+        dashboard: { en: "Dashboard", he: "לוח בקרה", ru: "Панель" },
+        courses: { en: "Courses", he: "קורסים", ru: "Курсы" },
+        students: { en: "Students", he: "סטודנטים", ru: "Студенты" },
+        content: { en: "Content", he: "תוכן", ru: "Контент" },
+        analytics: { en: "Analytics", he: "אנליטיקה", ru: "Аналитика" },
+        settings: { en: "Settings", he: "הגדרות", ru: "Настройки" },
+        search: { en: "Search…", he: "חיפוש…", ru: "Поиск…" },
+        filters: { en: "Filters", he: "מסננים", ru: "Фильтры" },
+        role: { en: "Role", he: "תפקיד", ru: "Роль" },
+        darkMode: { en: "Dark mode", he: "מצב כהה", ru: "Тёмная тема" },
+        language: { en: "Language", he: "שפה", ru: "Язык" },
+        logout: { en: "Log out", he: "התנתקות", ru: "Выйти" },
+        quickActions: { en: "Quick actions", he: "פעולות מהירות", ru: "Быстрые действия" },
+        createCourse: { en: "Create course", he: "צור קורס", ru: "Создать курс" },
+        addStudent: { en: "Add student", he: "הוסף סטודנט", ru: "Добавить студента" },
+        export: { en: "Export", he: "ייצוא", ru: "Экспорт" },
+        viewReports: { en: "View reports", he: "צפה בדוחות", ru: "Отчёты" },
+        recentActivity: { en: "Recent activity", he: "פעילות אחרונה", ru: "Недавняя активность" },
+        advancedSearch: { en: "Advanced search", he: "חיפוש מתקדם", ru: "Расширенный поиск" },
+        bulkActions: { en: "Bulk actions", he: "פעולות מרובות", ru: "Массовые действия" },
+        selectAll: { en: "Select all", he: "בחר הכל", ru: "Выбрать всё" },
+        clear: { en: "Clear", he: "נקה", ru: "Очистить" },
+        save: { en: "Save", he: "שמור", ru: "Сохранить" },
+        cancel: { en: "Cancel", he: "בטל", ru: "Отмена" },
+        uploadAvatar: { en: "Upload avatar", he: "העלה תמונה", ru: "Загрузить аватар" },
+        enrollmentStatus: { en: "Enrollment status", he: "סטטוס הרשמה", ru: "Статус" },
+        infiniteScrollHint: { en: "Scroll to load more", he: "גלול לטעון עוד", ru: "Прокрутите, чтобы загрузить" },
+        richTextEditor: { en: "Rich text editor", he: "עורך טקסט עשיר", ru: "Редактор" },
+        versionHistory: { en: "Version history", he: "היסטוריית גרסאות", ru: "История версий" },
+        rbacDenied: { en: "You don’t have access to this section.", he: "אין לך גישה לאזור זה.", ru: "Нет доступа." },
+        toastSaved: { en: "Saved successfully.", he: "נשמר בהצלחה.", ru: "Успешно сохранено." },
+        toastExported: { en: "Export started.", he: "הייצוא התחיל.", ru: "Экспорт начат." },
+        toastCreated: { en: "Created successfully.", he: "נוצר בהצלחה.", ru: "Успешно создано." },
+      };
+
+      function t(key: keyof typeof dict, lang: Lang) {
+        return dict[key][lang] ?? dict[key].en;
+      }
+
+      /* ===========================
+        utils.ts
+      ============================ */
+      function cx(...args: Array<string | undefined | false | null>) {
+        return args.filter(Boolean).join(" ");
+      }
+
+      function formatRelative(iso: string, lang: Lang) {
+        const d = new Date(iso);
+        const diffMs = Date.now() - d.getTime();
+        const mins = Math.round(diffMs / 60000);
+        if (mins < 1) return lang === "he" ? "עכשיו" : lang === "ru" ? "только что" : "just now";
+        if (mins < 60) return lang === "he" ? `לפני ${mins} דק׳` : lang === "ru" ? `${mins} мин назад` : `${mins}m ago`;
+        const hrs = Math.round(mins / 60);
+        if (hrs < 24) return lang === "he" ? `לפני ${hrs} ש׳` : lang === "ru" ? `${hrs} ч назад` : `${hrs}h ago`;
+        const days = Math.round(hrs / 24);
+        return lang === "he" ? `לפני ${days} ימים` : lang === "ru" ? `${days} дн назад` : `${days}d ago`;
+      }
+
+      function safeId(prefix = "id") {
+        return `${prefix}_${Math.random().toString(16).slice(2)}_${Date.now().toString(16)}`;
+      }
+
+      function debounce<T extends (...args: any[]) => void>(fn: T, ms: number) {
+        let t: any;
+        return (...args: Parameters<T>) => {
+          clearTimeout(t);
+          t = setTimeout(() => fn(...args), ms);
+        };
+      }
+
+      function downloadText(filename: string, text: string) {
+        const blob = new Blob([text], { type: "text/plain;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function clamp(n: number, min: number, max: number) {
+        return Math.max(min, Math.min(max, n));
+      }
+
+      /* ===========================
+        fake-backend.ts (Mock API)
+        - Demonstrates shape that maps cleanly to:
+          Node.js + Express + PostgreSQL + Prisma + JWT + Redis
+        - In production, these would be HTTP fetches.
+      ============================ */
+      const mockDB = (() => {
+        const cover = (seed: number) =>
+          `https://images.unsplash.com/photo-1523240795612-9a054b0db644?auto=format&fit=crop&w=1400&q=60&sig=${seed}`;
+
+        const avatars = [
+          "https://images.unsplash.com/photo-1502685104226-ee32379fefbe?auto=format&fit=crop&w=256&q=60",
+          "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=256&q=60",
+          "https://images.unsplash.com/photo-1544723795-3fb6469f5b39?auto=format&fit=crop&w=256&q=60",
+          "https://images.unsplash.com/photo-1550525811-e5869dd03032?auto=format&fit=crop&w=256&q=60",
+        ];
+
+        const categories = ["Design", "Engineering", "Business", "Data", "Languages"];
+        const tags = ["Onboarding", "Advanced", "Beginner", "Team", "Certification", "Workshop", "Microlearning"];
+
+        const courses: Course[] = Array.from({ length: 14 }).map((_, i) => ({
+          id: `course_${i + 1}`,
+          title: [
+            "Product Foundations",
+            "Modern UI Systems",
+            "Data-Driven Decisions",
+            "Operational Excellence",
+            "Cloud Fundamentals",
+            "Security Essentials",
+            "Finance for Managers",
+            "Marketing Analytics",
+            "React for Teams",
+            "SQL Mastery",
+            "Leadership Lab",
+            "Design Critique",
+            "KPI Playbook",
+            "Customer Success",
+          ][i],
+          category: categories[i % categories.length],
+          coverUrl: cover(i + 1),
+          progress: Math.round(15 + (i * 6.5) % 86),
+          updatedAt: new Date(Date.now() - (i * 3600 * 1000 + i * 700000)).toISOString(),
+          students: 38 + (i * 7) % 160,
+          owner: ["Maya", "Eli", "Noam", "Dana"][i % 4],
+          tags: [tags[i % tags.length], tags[(i + 3) % tags.length]],
+        }));
+
+        const studentNames = [
+          "Ariel Cohen",
+          "Noa Levi",
+          "Daniel Rosen",
+          "Yael Katz",
+          "Tomer Azulay",
+          "Lina Petrova",
+          "Nikita Gold",
+          "Sofia Ivanova",
+          "Eitan Ben-David",
+          "Hila Shani",
+          "Amit Bar",
+          "Yossi Friedman",
+          "Anna Smirnova",
+          "Misha Kagan",
+          "Or Tal",
+          "Roni Segal",
+        ];
+
+        const students: Student[] = Array.from({ length: 120 }).map((_, i) => {
+          const status: EnrollmentStatus = (["active", "pending", "suspended"] as const)[i % 3];
+          return {
+            id: `stu_${i + 1}`,
+            name: studentNames[i % studentNames.length] + (i >= studentNames.length ? ` ${i + 1}` : ""),
+            email: `student${i + 1}@example.com`,
+            status,
+            enrolledCourses: 1 + (i % 6),
+            lastActiveAt: new Date(Date.now() - (i * 5400 * 1000) / 4).toISOString(),
+            avatarUrl: avatars[i % avatars.length],
+          };
+        });
+
+        const activities: Activity[] = Array.from({ length: 14 }).map((_, i) => ({
+          id: `act_${i + 1}`,
+          type: (["create", "update", "enroll", "export", "login"] as const)[i % 5],
+          message: [
+            "Created a new course: Modern UI Systems",
+            "Updated content: SQL Mastery — Module 3",
+            "Enrolled 24 students into Product Foundations",
+            "Exported student roster (CSV)",
+            "Logged in from a new device",
+          ][i % 5],
+          at: new Date(Date.now() - i * 52 * 60 * 1000).toISOString(),
+          actor: { name: ["Maya", "Eli", "Noam", "Dana"][i % 4], avatarUrl: avatars[i % avatars.length] },
+        }));
+
+        const notifications: NotificationItem[] = Array.from({ length: 8 }).map((_, i) => ({
+          id: `not_${i + 1}`,
+          title: ["New enrollment", "Report ready", "Content review", "System notice"][i % 4],
+          body: [
+            "A batch of students were enrolled in React for Teams.",
+            "Your analytics export is ready for download.",
+            "A new content version needs approval.",
+            "Security policy updated successfully.",
+          ][i % 4],
+          at: new Date(Date.now() - i * 46 * 60 * 1000).toISOString(),
+          read: i > 2,
+        }));
+
+        const versions: ContentVersion[] = Array.from({ length: 6 }).map((_, i) => ({
+          id: `ver_${i + 1}`,
+          at: new Date(Date.now() - i * 4.5 * 3600 * 1000).toISOString(),
+          author: ["Maya", "Eli", "Dana"][i % 3],
+          summary: ["Refined intro", "Added examples", "Fixed typos", "Updated rubric", "New media links", "Expanded module"][i % 6],
+          diff: [
+            { type: "same", text: "Module Overview\n" },
+            ...(i % 2 === 0
+              ? [{ type: "add" as const, text: "+ Added interactive quiz section\n" }]
+              : [{ type: "del" as const, text: "- Removed outdated screenshot\n" }]),
+            { type: "same", text: "Key Takeaways\n" },
+          ],
+        }));
+
+        return { courses, students, activities, notifications, versions };
+      })();
+
+      const mockAPI = {
+        // Simulate JWT auth (access + refresh). For demo: always returns a user.
+        auth: async (): Promise<{ user: User; accessToken: string; refreshToken: string }> => {
+          await new Promise((r) => setTimeout(r, 350));
+          return {
+            user: {
+              id: "u_1",
+              name: "Nik Gold",
+              email: "nik@example.com",
+              role: "admin",
+              avatarUrl:
+                "https://images.unsplash.com/photo-1520975916090-3105956dac38?auto=format&fit=crop&w=256&q=60",
+            },
+            accessToken: "mock_access_token",
+            refreshToken: "mock_refresh_token",
+          };
+        },
+
+        metrics: async (): Promise<{
+          totalCourses: number;
+          totalStudents: number;
+          completionRate: number;
+          activeNow: number;
+          chart: { labels: string[]; enrollments: number[]; completions: number[] };
+        }> => {
+          await new Promise((r) => setTimeout(r, 500));
+          const labels = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+          const enrollments = [32, 48, 41, 55, 62, 44, 57];
+          const completions = [18, 26, 29, 31, 38, 22, 35];
+          return {
+            totalCourses: mockDB.courses.length,
+            totalStudents: mockDB.students.length,
+            completionRate: 84,
+            activeNow: 73,
+            chart: { labels, enrollments, completions },
+          };
+        },
+
+        activities: async (): Promise<Activity[]> => {
+          await new Promise((r) => setTimeout(r, 350));
+          return mockDB.activities;
+        },
+
+        courses: async (params: {
+          q?: string;
+          category?: string;
+          tags?: string[];
+          page?: number;
+          pageSize?: number;
+        }): Promise<{ items: Course[]; total: number }> => {
+          await new Promise((r) => setTimeout(r, 550));
+          const { q = "", category, tags = [], page = 1, pageSize = 8 } = params;
+
+          let items = [...mockDB.courses];
+          if (q.trim()) {
+            const qq = q.toLowerCase();
+            items = items.filter((c) => c.title.toLowerCase().includes(qq) || c.owner.toLowerCase().includes(qq));
+          }
+          if (category && category !== "All") items = items.filter((c) => c.category === category);
+          if (tags.length) items = items.filter((c) => tags.every((t) => c.tags.includes(t)));
+
+          const total = items.length;
+          const start = (page - 1) * pageSize;
+          const end = start + pageSize;
+          return { items: items.slice(start, end), total };
+        },
+
+        updateCourseOrder: async (orderedIds: string[]): Promise<{ ok: true }> => {
+          await new Promise((r) => setTimeout(r, 400));
+          const map = new Map(mockDB.courses.map((c) => [c.id, c]));
+          const reordered: Course[] = [];
+          orderedIds.forEach((id) => {
+            const c = map.get(id);
+            if (c) reordered.push(c);
+          });
+          // Append any missing
+          mockDB.courses.forEach((c) => {
+            if (!orderedIds.includes(c.id)) reordered.push(c);
+          });
+          (mockDB as any).courses = reordered;
+          return { ok: true };
+        },
+
+        studentsPage: async (params: { page: number; pageSize: number; q?: string; status?: EnrollmentStatus | "all" }) => {
+          await new Promise((r) => setTimeout(r, 520));
+          const { page, pageSize, q = "", status = "all" } = params;
+          let items = [...mockDB.students];
+          if (q.trim()) {
+            const qq = q.toLowerCase();
+            items = items.filter((s) => s.name.toLowerCase().includes(qq) || s.email.toLowerCase().includes(qq));
+          }
+          if (status !== "all") items = items.filter((s) => s.status === status);
+          const total = items.length;
+          const start = (page - 1) * pageSize;
+          return { items: items.slice(start, start + pageSize), total };
+        },
+
+        saveStudent: async (payload: Partial<Student> & { id?: string }): Promise<Student> => {
+          await new Promise((r) => setTimeout(r, 520));
+          if (!payload.name || !payload.email) throw new Error("Missing fields");
+          if (payload.id) {
+            const idx = mockDB.students.findIndex((s) => s.id === payload.id);
+            if (idx >= 0) {
+              mockDB.students[idx] = { ...mockDB.students[idx], ...payload } as Student;
+              return mockDB.students[idx];
+            }
+          }
+          const created: Student = {
+            id: `stu_${mockDB.students.length + 1}`,
+            name: payload.name!,
+            email: payload.email!,
+            status: (payload.status as EnrollmentStatus) ?? "pending",
+            enrolledCourses: payload.enrolledCourses ?? 0,
+            lastActiveAt: new Date().toISOString(),
+            avatarUrl: payload.avatarUrl,
+          };
+          mockDB.students.unshift(created);
+          return created;
+        },
+
+        contentVersions: async (): Promise<ContentVersion[]> => {
+          await new Promise((r) => setTimeout(r, 420));
+          return mockDB.versions;
+        },
+
+        notifications: async (): Promise<NotificationItem[]> => {
+          await new Promise((r) => setTimeout(r, 300));
+          return mockDB.notifications;
+        },
+
+        markAllRead: async (): Promise<{ ok: true }> => {
+          await new Promise((r) => setTimeout(r, 260));
+          (mockDB.notifications as any).forEach((n: NotificationItem) => (n.read = true));
+          return { ok: true };
+        },
+      };
+
+      /* ===========================
+        auth.ts (RBAC + session)
+      ============================ */
+      type AuthState =
+        | { status: "loading" }
+        | { status: "ready"; user: User; accessToken: string; refreshToken: string };
+
+      const AuthContext = ReactAny.createContext<{
+        auth: AuthState;
+        logout: () => void;
+        switchRole: (role: Role) => void;
+      } | null>(null);
+
+      function AuthProvider({ children }: { children: React.ReactNode }) {
+        const [auth, setAuth] = useState<AuthState>({ status: "loading" });
+
+        useEffect(() => {
+          let mounted = true;
+          mockAPI
+            .auth()
+            .then((res) => {
+              if (!mounted) return;
+              setAuth({ status: "ready", ...res });
+            })
+            .catch(() => {
+              if (!mounted) return;
+              // fallback demo user
+              setAuth({
+                status: "ready",
+                user: { id: "u_1", name: "User", email: "user@example.com", role: "student" },
+                accessToken: "mock",
+                refreshToken: "mock",
+              });
+            });
+          return () => {
+            mounted = false;
+          };
+        }, []);
+
+        const logout = () => {
+          setAuth({ status: "loading" });
+          setTimeout(() => {
+            mockAPI.auth().then((res) => setAuth({ status: "ready", ...res }));
+          }, 400);
+        };
+
+        const switchRole = (role: Role) => {
+          setAuth((prev) => {
+            if (prev.status !== "ready") return prev;
+            return { ...prev, user: { ...prev.user, role } };
+          });
+        };
+
+        return <AuthContext.Provider value={{ auth, logout, switchRole }}>{children}</AuthContext.Provider>;
+      }
+
+      function useAuth() {
+        const ctx = React.useContext(AuthContext);
+        if (!ctx) throw new Error("AuthContext missing");
+        return ctx;
+      }
+
+      function canAccess(role: Role, section: NavKey): boolean {
+        // Clean RBAC policy:
+        // - admin: everything
+        // - instructor: dashboard, courses, students, content, analytics
+        // - student: dashboard, courses, content (read-only experience)
+        if (role === "admin") return true;
+        if (role === "instructor") return section !== "settings";
+        if (role === "student") return ["dashboard", "courses", "content"].includes(section);
+        return false;
+      }
+
+      /* ===========================
+        theme.ts (dark mode)
+      ============================ */
+      const ThemeContext = ReactAny.createContext<{
+        dark: boolean;
+        toggle: () => void;
+      } | null>(null);
+
+      function ThemeProvider({ children }: { children: React.ReactNode }) {
+        const [dark, setDark] = useState<boolean>(() => {
+          const stored = localStorage.getItem("cms_dark");
+          return stored ? stored === "1" : window.matchMedia?.("(prefers-color-scheme: dark)")?.matches ?? false;
+        });
+
+        useEffect(() => {
+          document.documentElement.classList.toggle("dark", dark);
+          localStorage.setItem("cms_dark", dark ? "1" : "0");
+        }, [dark]);
+
+        return <ThemeContext.Provider value={{ dark, toggle: () => setDark((d) => !d) }}>{children}</ThemeContext.Provider>;
+      }
+
+      function useTheme() {
+        const ctx = React.useContext(ThemeContext);
+        if (!ctx) throw new Error("ThemeContext missing");
+        return ctx;
+      }
+
+      /* ===========================
+        toasts.ts
+      ============================ */
+      type ToastType = "success" | "info" | "error";
+      interface Toast {
+        id: string;
+        type: ToastType;
+        title: string;
+        message?: string;
+      }
+
+      const ToastContext = ReactAny.createContext<{
+        push: (t: Omit<Toast, "id">) => void;
+      } | null>(null);
+
+      function ToastProvider({ children }: { children: React.ReactNode }) {
+        const [toasts, setToasts] = useState<Toast[]>([]);
+
+        const push = (t: Omit<Toast, "id">) => {
+          const id = safeId("toast");
+          setToasts((prev) => [...prev, { id, ...t }]);
+          window.setTimeout(() => {
+            setToasts((prev) => prev.filter((x) => x.id !== id));
+          }, 3200);
+        };
+
+        return (
+          <ToastContext.Provider value={{ push }}>
+            {children}
+            <div
+              aria-live="polite"
+              aria-relevant="additions text"
+              className="fixed right-4 top-4 z-50 space-y-2"
+            >
+              <AnimatePresence>
+                {toasts.map((t) => (
+                  <motion.div
+                    key={t.id}
+                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                    transition={{ duration: 0.3 }}
+                    className={cx(
+                      "w-[320px] rounded-lg shadow-card border p-3",
+                      "bg-white/90 backdrop-blur dark:bg-slate-900/85 dark:border-slate-800",
+                      t.type === "success" && "border-emerald-200 dark:border-emerald-900/60",
+                      t.type === "info" && "border-blue-200 dark:border-blue-900/60",
+                      t.type === "error" && "border-red-200 dark:border-red-900/60"
+                    )}
+                    role="status"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div
+                        className={cx(
+                          "mt-0.5 h-2.5 w-2.5 rounded-full",
+                          t.type === "success" && "bg-accent",
+                          t.type === "info" && "bg-primary",
+                          t.type === "error" && "bg-red-500"
+                        )}
+                        aria-hidden="true"
+                      />
+                      <div className="min-w-0">
+                        <div className="font-semibold text-sm text-slate-900 dark:text-slate-100">{t.title}</div>
+                        {t.message ? (
+                          <div className="text-sm text-secondary dark:text-slate-300 leading-relaxed">{t.message}</div>
+                        ) : null}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))}
+              </AnimatePresence>
+            </div>
+          </ToastContext.Provider>
+        );
+      }
+
+      function useToasts() {
+        const ctx = React.useContext(ToastContext);
+        if (!ctx) throw new Error("ToastContext missing");
+        return ctx;
+      }
+
+      /* ===========================
+        hooks: useDebouncedValue, useKey, useOnClickOutside, useInfiniteScroll
+      ============================ */
+      function useDebouncedValue<T>(value: T, delay = 350) {
+        const [debounced, setDebounced] = useState(value);
+        useEffect(() => {
+          const id = window.setTimeout(() => setDebounced(value), delay);
+          return () => window.clearTimeout(id);
+        }, [value, delay]);
+        return debounced;
+      }
+
+      function useKey(handler: (e: KeyboardEvent) => void, deps: any[] = []) {
+        useEffect(() => {
+          window.addEventListener("keydown", handler);
+          return () => window.removeEventListener("keydown", handler);
+          // eslint-disable-next-line react-hooks/exhaustive-deps
+        }, deps);
+      }
+
+      function useOnClickOutside(ref: React.RefObject<HTMLElement>, onOutside: () => void) {
+        useEffect(() => {
+          const onDown = (e: MouseEvent) => {
+            const el = ref.current;
+            if (!el) return;
+            if (!el.contains(e.target as Node)) onOutside();
+          };
+          document.addEventListener("mousedown", onDown);
+          return () => document.removeEventListener("mousedown", onDown);
+        }, [ref, onOutside]);
+      }
+
+      function useInfiniteScroll(opts: {
+        enabled: boolean;
+        root?: Element | null;
+        rootMargin?: string;
+        onLoadMore: () => void;
+      }) {
+        const { enabled, root = null, rootMargin = "300px", onLoadMore } = opts;
+        const sentinelRef = useRef<HTMLDivElement | null>(null);
+
+        useEffect(() => {
+          if (!enabled) return;
+          const node = sentinelRef.current;
+          if (!node) return;
+          const obs = new IntersectionObserver(
+            (entries) => {
+              if (entries.some((e) => e.isIntersecting)) onLoadMore();
+            },
+            { root, rootMargin }
+          );
+          obs.observe(node);
+          return () => obs.disconnect();
+        }, [enabled, root, rootMargin, onLoadMore]);
+
+        return sentinelRef;
+      }
+
+      /* ===========================
+        UI primitives
+      ============================ */
+      function Card({
+        children,
+        className,
+        as = "div",
+        ...rest
+      }: {
+        children: React.ReactNode;
+        className?: string;
+        as?: any;
+        [k: string]: any;
+      }) {
+        const Comp = as;
+        return (
+          <Comp
+            className={cx(
+              "rounded-lg border bg-white shadow-card",
+              "dark:bg-slate-900 dark:border-slate-800",
+              "transition duration-300",
+              className
+            )}
+            {...rest}
+          >
+            {children}
+          </Comp>
+        );
+      }
+
+      function Button({
+        children,
+        variant = "primary",
+        size = "md",
+        className,
+        ...rest
+      }: {
+        children: React.ReactNode;
+        variant?: "primary" | "secondary" | "ghost" | "danger";
+        size?: "sm" | "md";
+        className?: string;
+        [k: string]: any;
+      }) {
+        const base =
+          "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 disabled:opacity-60 disabled:cursor-not-allowed";
+        const sizes = size === "sm" ? "h-9 px-3 text-sm" : "h-10 px-4 text-sm";
+        const variants =
+          variant === "primary"
+            ? "bg-primary text-white hover:brightness-105 active:brightness-95"
+            : variant === "secondary"
+            ? "bg-slate-100 text-slate-900 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+            : variant === "danger"
+            ? "bg-red-500 text-white hover:brightness-105 active:brightness-95"
+            : "bg-transparent text-slate-900 hover:bg-slate-100 dark:text-slate-100 dark:hover:bg-slate-800";
+        return (
+          <button className={cx(base, sizes, variants, className)} {...rest}>
+            {children}
+          </button>
+        );
+      }
+
+      function Pill({ children, color = "slate" }: { children: React.ReactNode; color?: "slate" | "green" | "amber" | "red" | "blue" }) {
+        const map = {
+          slate: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200",
+          green: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200",
+          amber: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200",
+          red: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-200",
+          blue: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-200",
+        };
+        return <span className={cx("inline-flex items-center rounded-full px-2.5 py-1 text-xs font-semibold", map[color])}>{children}</span>;
+      }
+
+      function Skeleton({ className }: { className: string }) {
+        return (
+          <div
+            className={cx(
+              "animate-pulse rounded-lg bg-slate-200/70 dark:bg-slate-800/70",
+              className
+            )}
+            aria-hidden="true"
+          />
+        );
+      }
+
+      function Modal({
+        open,
+        title,
+        onClose,
+        children,
+      }: {
+        open: boolean;
+        title: string;
+        onClose: () => void;
+        children: React.ReactNode;
+      }) {
+        const panelRef = useRef<HTMLDivElement | null>(null);
+
+        useKey(
+          (e) => {
+            if (!open) return;
+            if (e.key === "Escape") onClose();
+          },
+          [open, onClose]
+        );
+
+        useOnClickOutside(panelRef, () => {
+          if (open) onClose();
+        });
+
+        return (
+          <AnimatePresence>
+            {open ? (
+              <motion.div
+                className="fixed inset-0 z-40 flex items-center justify-center p-4"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                role="dialog"
+                aria-modal="true"
+                aria-label={title}
+              >
+                <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" />
+                <motion.div
+                  ref={panelRef}
+                  initial={{ y: 10, opacity: 0, scale: 0.98 }}
+                  animate={{ y: 0, opacity: 1, scale: 1 }}
+                  exit={{ y: 10, opacity: 0, scale: 0.98 }}
+                  transition={{ duration: 0.3 }}
+                  className="relative w-full max-w-2xl rounded-lg border bg-white shadow-card dark:bg-slate-900 dark:border-slate-800"
+                >
+                  <div className="flex items-center justify-between border-b p-4 dark:border-slate-800">
+                    <div className="font-semibold">{title}</div>
+                    <Button variant="ghost" onClick={onClose} aria-label="Close dialog">
+                      ✕
+                    </Button>
+                  </div>
+                  <div className="p-4">{children}</div>
+                </motion.div>
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+        );
+      }
+
+      /* ===========================
+        chart.ts (Chart.js wrapper w/ custom tooltip)
+      ============================ */
+      function LineChart({
+        id,
+        labels,
+        a,
+        b,
+        dark,
+      }: {
+        id: string;
+        labels: string[];
+        a: number[];
+        b: number[];
+        dark: boolean;
+      }) {
+        const canvasRef = useRef<HTMLCanvasElement | null>(null);
+        const chartRef = useRef<any>(null);
+
+        useEffect(() => {
+          const ctx = canvasRef.current?.getContext("2d");
+          if (!ctx) return;
+
+          if (chartRef.current) {
+            chartRef.current.destroy();
+            chartRef.current = null;
+          }
+
+          const gridColor = dark ? "rgba(148,163,184,0.18)" : "rgba(100,116,139,0.16)";
+          const tickColor = dark ? "rgba(226,232,240,0.8)" : "rgba(30,41,59,0.75)";
+
+          chartRef.current = new (window as any).Chart(ctx, {
+            type: "line",
+            data: {
+              labels,
+              datasets: [
+                {
+                  label: "Enrollments",
+                  data: a,
+                  borderColor: "#2563eb",
+                  backgroundColor: "rgba(37,99,235,0.12)",
+                  tension: 0.35,
+                  fill: true,
+                  pointRadius: 3,
+                  pointHoverRadius: 4,
+                },
+                {
+                  label: "Completions",
+                  data: b,
+                  borderColor: "#10b981",
+                  backgroundColor: "rgba(16,185,129,0.10)",
+                  tension: 0.35,
+                  fill: true,
+                  pointRadius: 3,
+                  pointHoverRadius: 4,
+                },
+              ],
+            },
+            options: {
+              responsive: true,
+              maintainAspectRatio: false,
+              plugins: {
+                legend: {
+                  display: true,
+                  labels: { color: tickColor, boxWidth: 10, boxHeight: 10, usePointStyle: true },
+                },
+                tooltip: {
+                  enabled: true,
+                  backgroundColor: dark ? "rgba(15,23,42,.95)" : "rgba(255,255,255,.96)",
+                  titleColor: dark ? "rgba(226,232,240,0.95)" : "rgba(30,41,59,0.95)",
+                  bodyColor: dark ? "rgba(226,232,240,0.85)" : "rgba(30,41,59,0.85)",
+                  borderColor: dark ? "rgba(51,65,85,1)" : "rgba(226,232,240,1)",
+                  borderWidth: 1,
+                  padding: 10,
+                  cornerRadius: 8,
+                },
+              },
+              scales: {
+                x: {
+                  grid: { color: gridColor },
+                  ticks: { color: tickColor },
+                },
+                y: {
+                  grid: { color: gridColor },
+                  ticks: { color: tickColor },
+                },
+              },
+            },
+          });
+
+          return () => {
+            if (chartRef.current) chartRef.current.destroy();
+          };
+        }, [labels.join(","), a.join(","), b.join(","), dark]);
+
+        return (
+          <div className="h-64">
+            <canvas id={id} ref={canvasRef} aria-label="Enrollments and completions chart" role="img" />
+          </div>
+        );
+      }
+
+      /* ===========================
+        layout.tsx
+      ============================ */
+      type NavKey = "dashboard" | "courses" | "students" | "content" | "analytics" | "settings";
+
+      function AppShell({
+        nav,
+        setNav,
+        lang,
+        setLang,
+      }: {
+        nav: NavKey;
+        setNav: (n: NavKey) => void;
+        lang: Lang;
+        setLang: (l: Lang) => void;
+      }) {
+        const { auth, logout, switchRole } = useAuth();
+        const { dark, toggle } = useTheme();
+
+        const [mobileOpen, setMobileOpen] = useState(false);
+        const [notifOpen, setNotifOpen] = useState(false);
+
+        const { data: notifications, refetch: refetchNotifs } = useQuery({
+          queryKey: ["notifications"],
+          queryFn: mockAPI.notifications,
+          staleTime: 20_000,
+        });
+
+        const unreadCount = useMemo(() => (notifications ? notifications.filter((n) => !n.read).length : 0), [notifications]);
+
+        useEffect(() => {
+          // “Real-time” updates: poll occasionally (demo). In production use WebSocket/SSE.
+          const id = window.setInterval(() => {
+            refetchNotifs();
+          }, 25_000);
+          return () => window.clearInterval(id);
+        }, [refetchNotifs]);
+
+        const navItems: Array<{ key: NavKey; label: string; icon: string }> = [
+          { key: "dashboard", label: t("dashboard", lang), icon: "▦" },
+          { key: "courses", label: t("courses", lang), icon: "▣" },
+          { key: "students", label: t("students", lang), icon: "▥" },
+          { key: "content", label: t("content", lang), icon: "✎" },
+          { key: "analytics", label: t("analytics", lang), icon: "▧" },
+          { key: "settings", label: t("settings", lang), icon: "⚙" },
+        ];
+
+        if (auth.status !== "ready") {
+          return (
+            <div className="min-h-screen bg-bg dark:bg-slate-950">
+              <div className="mx-auto max-w-7xl px-4 py-10">
+                <div className="grid grid-cols-12 gap-4">
+                  <div className="col-span-12 lg:col-span-3">
+                    <Card className="p-4">
+                      <Skeleton className="h-7 w-40" />
+                      <div className="mt-4 space-y-2">
+                        <Skeleton className="h-9 w-full" />
+                        <Skeleton className="h-9 w-full" />
+                        <Skeleton className="h-9 w-full" />
+                        <Skeleton className="h-9 w-full" />
+                      </div>
+                    </Card>
+                  </div>
+                  <div className="col-span-12 lg:col-span-9">
+                    <Card className="p-4">
+                      <Skeleton className="h-8 w-64" />
+                      <div className="mt-4 grid grid-cols-12 gap-4">
+                        <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-24" />
+                        <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-24" />
+                        <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-24" />
+                        <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-24" />
+                        <Skeleton className="col-span-12 h-64" />
+                      </div>
+                    </Card>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        const user = auth.user;
+
+        const Sidebar = (
+          <div className="h-full">
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-10 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
+                  {user.avatarUrl ? <img src={user.avatarUrl} alt={`${user.name} avatar`} className="h-full w-full object-cover" loading="lazy" /> : null}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate font-semibold">{user.name}</div>
+                  <div className="truncate text-sm text-secondary dark:text-slate-300">{user.email}</div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-12 gap-2">
+                <div className="col-span-12">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">{t("role", lang)}</label>
+                  <div className="mt-1 flex gap-2">
+                    {(["admin", "instructor", "student"] as Role[]).map((r) => (
+                      <button
+                        key={r}
+                        onClick={() => switchRole(r)}
+                        className={cx(
+                          "flex-1 rounded-lg border px-2 py-2 text-xs font-semibold transition duration-300",
+                          user.role === r
+                            ? "border-primary bg-primary/10 text-primary dark:bg-primary/15"
+                            : "border-slate-200 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40"
+                        )}
+                        aria-pressed={user.role === r}
+                      >
+                        {r}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="col-span-12">
+                  <div className="mt-2 flex items-center justify-between">
+                    <span className="text-xs font-semibold text-secondary dark:text-slate-300">{t("darkMode", lang)}</span>
+                    <button
+                      onClick={toggle}
+                      className={cx(
+                        "h-9 w-14 rounded-full border transition duration-300",
+                        dark ? "bg-slate-900 border-slate-700" : "bg-slate-100 border-slate-200"
+                      )}
+                      role="switch"
+                      aria-checked={dark}
+                      aria-label="Toggle dark mode"
+                    >
+                      <span
+                        className={cx(
+                          "block h-7 w-7 translate-x-1 rounded-full bg-white shadow-card transition duration-300",
+                          dark && "translate-x-6 bg-slate-200"
+                        )}
+                      />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="col-span-12">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">{t("language", lang)}</label>
+                  <select
+                    value={lang}
+                    onChange={(e) => setLang(e.target.value as Lang)}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                    aria-label="Language"
+                  >
+                    <option value="en">English</option>
+                    <option value="he">עברית</option>
+                    <option value="ru">Русский</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 space-y-1">
+                {navItems.map((item) => {
+                  const disabled = !canAccess(user.role, item.key);
+                  const active = nav === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => {
+                        if (disabled) return;
+                        setNav(item.key);
+                        setMobileOpen(false);
+                      }}
+                      className={cx(
+                        "w-full rounded-lg border px-3 py-2 text-left text-sm font-semibold transition duration-300",
+                        active
+                          ? "border-primary bg-primary/10 text-primary dark:bg-primary/15"
+                          : "border-transparent hover:bg-slate-50 dark:hover:bg-slate-800/40",
+                        disabled && "opacity-50 cursor-not-allowed"
+                      )}
+                      aria-disabled={disabled}
+                    >
+                      <span className="mr-2" aria-hidden="true">
+                        {item.icon}
+                      </span>
+                      {item.label}
+                      {item.key === "settings" && user.role !== "admin" ? (
+                        <span className="ml-2 text-xs text-secondary dark:text-slate-400">(Admin)</span>
+                      ) : null}
+                    </button>
+                  );
+                })}
+              </div>
+
+              <div className="mt-4">
+                <Button variant="secondary" className="w-full" onClick={logout} aria-label="Log out">
+                  {t("logout", lang)}
+                </Button>
+              </div>
+            </Card>
+          </div>
+        );
+
+        return (
+          <div className="min-h-screen">
+            {/* Top bar */}
+            <header className="sticky top-0 z-30 border-b bg-white/85 backdrop-blur dark:bg-slate-950/70 dark:border-slate-800">
+              <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <button
+                    className="lg:hidden rounded-lg border px-3 py-2 text-sm font-semibold transition duration-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40"
+                    onClick={() => setMobileOpen((o) => !o)}
+                    aria-label="Open navigation"
+                    aria-expanded={mobileOpen}
+                  >
+                    ☰
+                  </button>
+
+                  <div className="flex items-center gap-2">
+                    <div className="h-9 w-9 rounded-lg bg-gradient-to-br from-primary to-accent" aria-hidden="true" />
+                    <div className="leading-tight">
+                      <div className="font-semibold">{t("appName", lang)}</div>
+                      <div className="text-xs text-secondary dark:text-slate-300">Sleek • Minimal • Production-minded</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <button
+                    className="relative rounded-lg border px-3 py-2 text-sm font-semibold transition duration-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40"
+                    onClick={() => setNotifOpen((o) => !o)}
+                    aria-label="Open notifications"
+                    aria-haspopup="dialog"
+                    aria-expanded={notifOpen}
+                  >
+                    🔔
+                    {unreadCount ? (
+                      <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-[20px] items-center justify-center rounded-full bg-accent px-1 text-xs font-bold text-white">
+                        {unreadCount}
+                      </span>
+                    ) : null}
+                  </button>
+
+                  <div className="hidden md:flex items-center gap-2 rounded-lg border bg-white px-3 py-2 text-sm dark:bg-slate-900 dark:border-slate-800">
+                    <span className="text-secondary dark:text-slate-300">RBAC:</span>
+                    <span className="font-semibold">{user.role}</span>
+                  </div>
+                </div>
+              </div>
+            </header>
+
+            {/* Notifications panel */}
+            <Modal
+              open={notifOpen}
+              title="Notifications"
+              onClose={() => setNotifOpen(false)}
+            >
+              <NotificationsPanel lang={lang} />
+            </Modal>
+
+            {/* Mobile sidebar */}
+            <AnimatePresence>
+              {mobileOpen ? (
+                <motion.div
+                  className="fixed inset-0 z-40 lg:hidden"
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  role="dialog"
+                  aria-modal="true"
+                  aria-label="Navigation"
+                >
+                  <div className="absolute inset-0 bg-black/30" onClick={() => setMobileOpen(false)} />
+                  <motion.div
+                    initial={{ x: -18, opacity: 0 }}
+                    animate={{ x: 0, opacity: 1 }}
+                    exit={{ x: -18, opacity: 0 }}
+                    transition={{ duration: 0.3 }}
+                    className="relative h-full w-[320px] bg-bg p-4 dark:bg-slate-950"
+                  >
+                    {Sidebar}
+                  </motion.div>
+                </motion.div>
+              ) : null}
+            </AnimatePresence>
+
+            {/* Main layout: 12-column grid */}
+            <div className="mx-auto max-w-7xl px-4 py-6">
+              <div className="grid grid-cols-12 gap-4">
+                {/* Sidebar (desktop) */}
+                <aside className="hidden lg:block col-span-12 lg:col-span-3">{Sidebar}</aside>
+
+                {/* Content */}
+                <main id="main" className="col-span-12 lg:col-span-9" role="main">
+                  <ErrorBoundary>
+                    <SectionRouter nav={nav} lang={lang} />
+                  </ErrorBoundary>
+                </main>
+              </div>
+            </div>
+
+            <footer className="border-t py-6 text-center text-xs text-secondary dark:text-slate-400 dark:border-slate-800">
+              Single-file demo • Build with Vite/Next + Prisma + Express + Redis + JWT for production
+            </footer>
+          </div>
+        );
+      }
+
+      /* ===========================
+        ErrorBoundary.tsx
+      ============================ */
+      class ErrorBoundary extends ReactAny.Component<{ children: React.ReactNode }, { hasError: boolean; msg?: string }> {
+        constructor(props: any) {
+          super(props);
+          this.state = { hasError: false };
+        }
+        static getDerivedStateFromError(err: any) {
+          return { hasError: true, msg: err?.message ?? "Unknown error" };
+        }
+        componentDidCatch(err: any) {
+          // In production: report to monitoring (Sentry/Datadog)
+          console.error("ErrorBoundary:", err);
+        }
+        render() {
+          if (this.state.hasError) {
+            return (
+              <Card className="p-4">
+                <div className="font-semibold">Something went wrong</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">{this.state.msg}</div>
+                <div className="mt-3">
+                  <Button variant="secondary" onClick={() => this.setState({ hasError: false, msg: undefined })}>
+                    Try again
+                  </Button>
+                </div>
+              </Card>
+            );
+          }
+          return this.props.children as any;
+        }
+      }
+
+      /* ===========================
+        Router
+      ============================ */
+      function SectionRouter({ nav, lang }: { nav: NavKey; lang: Lang }) {
+        const { auth } = useAuth();
+        if (auth.status !== "ready") return null;
+        const role = auth.user.role;
+
+        if (!canAccess(role, nav)) {
+          return (
+            <Card className="p-6">
+              <div className="flex items-start gap-3">
+                <div className="h-10 w-10 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center">⛔</div>
+                <div>
+                  <div className="font-semibold">{t("rbacDenied", lang)}</div>
+                  <div className="text-sm text-secondary dark:text-slate-300 mt-1">
+                    Switch role (left sidebar) to see this area.
+                  </div>
+                </div>
+              </div>
+            </Card>
+          );
+        }
+
+        switch (nav) {
+          case "dashboard":
+            return <Dashboard lang={lang} />;
+          case "courses":
+            return <Courses lang={lang} />;
+          case "students":
+            return <Students lang={lang} />;
+          case "content":
+            return <Content lang={lang} />;
+          case "analytics":
+            return <Analytics lang={lang} />;
+          case "settings":
+            return <Settings lang={lang} />;
+          default:
+            return null;
+        }
+      }
+
+      /* ===========================
+        Notifications
+      ============================ */
+      function NotificationsPanel({ lang }: { lang: Lang }) {
+        const qc = useQueryClient();
+        const { push } = useToasts();
+        const { data, isLoading } = useQuery({ queryKey: ["notifications"], queryFn: mockAPI.notifications });
+
+        const markAll = useMutation({
+          mutationFn: mockAPI.markAllRead,
+          onSuccess: async () => {
+            await qc.invalidateQueries({ queryKey: ["notifications"] });
+            push({ type: "success", title: "Notifications", message: "Marked all as read." });
+          },
+        });
+
+        return (
+          <div>
+            <div className="flex items-center justify-between">
+              <div className="text-sm text-secondary dark:text-slate-300">Real-time updates (polling demo)</div>
+              <Button variant="secondary" size="sm" onClick={() => markAll.mutate()} disabled={markAll.isPending}>
+                Mark all read
+              </Button>
+            </div>
+
+            <div className="mt-4 space-y-2">
+              {isLoading ? (
+                <>
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                  <Skeleton className="h-16 w-full" />
+                </>
+              ) : (
+                (data ?? []).map((n) => (
+                  <div
+                    key={n.id}
+                    className={cx(
+                      "rounded-lg border p-3 transition duration-300",
+                      "bg-white dark:bg-slate-900 dark:border-slate-800",
+                      !n.read && "border-emerald-200 dark:border-emerald-900/60"
+                    )}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <div className={cx("h-2 w-2 rounded-full", !n.read ? "bg-accent" : "bg-slate-300 dark:bg-slate-700")} aria-hidden="true" />
+                          <div className="font-semibold text-sm truncate">{n.title}</div>
+                        </div>
+                        <div className="mt-1 text-sm text-secondary dark:text-slate-300 leading-relaxed">{n.body}</div>
+                      </div>
+                      <div className="text-xs text-secondary dark:text-slate-400 whitespace-nowrap">{formatRelative(n.at, lang)}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        );
+      }
+
+      /* ===========================
+        Dashboard
+      ============================ */
+      function MetricCard({
+        title,
+        value,
+        hint,
+        gradient,
+      }: {
+        title: string;
+        value: string;
+        hint: string;
+        gradient: string;
+      }) {
+        return (
+          <Card className={cx("p-4 overflow-hidden relative", gradient)}>
+            <div className="relative">
+              <div className="text-sm font-semibold text-white/90">{title}</div>
+              <div className="mt-2 text-3xl font-semibold text-white">{value}</div>
+              <div className="mt-1 text-sm text-white/80">{hint}</div>
+            </div>
+            <div className="absolute -right-10 -top-10 h-32 w-32 rounded-full bg-white/10" aria-hidden="true" />
+          </Card>
+        );
+      }
+
+      function Dashboard({ lang }: { lang: Lang }) {
+        const { dark } = useTheme();
+        const { push } = useToasts();
+
+        const { data: metrics, isLoading: loadingMetrics } = useQuery({
+          queryKey: ["metrics"],
+          queryFn: mockAPI.metrics,
+          staleTime: 15_000,
+        });
+
+        const { data: activities, isLoading: loadingActs } = useQuery({
+          queryKey: ["activities"],
+          queryFn: mockAPI.activities,
+          staleTime: 15_000,
+        });
+
+        return (
+          <div className="space-y-4">
+            {/* Page header */}
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xl font-semibold">{t("dashboard", lang)}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                  Professional metrics, quick actions, and recent activity — optimized interactions.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => push({ type: "info", title: "Quick action", message: "Opened report center (demo)." })}
+                >
+                  {t("viewReports", lang)}
+                </Button>
+                <Button
+                  onClick={() => push({ type: "success", title: "Course", message: t("toastCreated", lang) })}
+                >
+                  {t("createCourse", lang)}
+                </Button>
+              </div>
+            </div>
+
+            {/* Metrics */}
+            <div className="grid grid-cols-12 gap-4">
+              {loadingMetrics ? (
+                <>
+                  <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-28" />
+                  <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-28" />
+                  <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-28" />
+                  <Skeleton className="col-span-12 md:col-span-6 lg:col-span-3 h-28" />
+                </>
+              ) : (
+                <>
+                  <div className="col-span-12 md:col-span-6 lg:col-span-3">
+                    <MetricCard title="Courses" value={`${metrics?.totalCourses ?? 0}`} hint="Total published" gradient="bg-gradient-to-br from-primary to-blue-400" />
+                  </div>
+                  <div className="col-span-12 md:col-span-6 lg:col-span-3">
+                    <MetricCard title="Students" value={`${metrics?.totalStudents ?? 0}`} hint="Managed learners" gradient="bg-gradient-to-br from-slate-700 to-secondary" />
+                  </div>
+                  <div className="col-span-12 md:col-span-6 lg:col-span-3">
+                    <MetricCard title="Completion" value={`${metrics?.completionRate ?? 0}%`} hint="Avg across courses" gradient="bg-gradient-to-br from-accent to-emerald-400" />
+                  </div>
+                  <div className="col-span-12 md:col-span-6 lg:col-span-3">
+                    <MetricCard title="Active now" value={`${metrics?.activeNow ?? 0}`} hint="Real-time presence" gradient="bg-gradient-to-br from-indigo-500 to-primary" />
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Charts + Quick actions + Activity */}
+            <div className="grid grid-cols-12 gap-4">
+              <Card className="col-span-12 lg:col-span-8 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold">Weekly performance</div>
+                    <div className="text-sm text-secondary dark:text-slate-300">Custom tooltip styling + branded colors</div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => push({ type: "info", title: "Export", message: t("toastExported", lang) })}
+                    >
+                      {t("export", lang)}
+                    </Button>
+                    <Button size="sm" variant="ghost" onClick={() => push({ type: "success", title: "Saved", message: t("toastSaved", lang) })}>
+                      Save view
+                    </Button>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  {loadingMetrics ? (
+                    <Skeleton className="h-64 w-full" />
+                  ) : (
+                    <LineChart
+                      id="chart_week"
+                      labels={metrics!.chart.labels}
+                      a={metrics!.chart.enrollments}
+                      b={metrics!.chart.completions}
+                      dark={dark}
+                    />
+                  )}
+                </div>
+              </Card>
+
+              <Card className="col-span-12 lg:col-span-4 p-4">
+                <div className="font-semibold">{t("quickActions", lang)}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">Hover-ready, keyboard friendly</div>
+
+                <div className="mt-4 grid gap-2">
+                  <Button
+                    className="justify-start"
+                    variant="secondary"
+                    onClick={() => push({ type: "success", title: "Student", message: t("toastCreated", lang) })}
+                  >
+                    ➕ {t("addStudent", lang)}
+                  </Button>
+                  <Button
+                    className="justify-start"
+                    variant="secondary"
+                    onClick={() => push({ type: "info", title: "Export", message: t("toastExported", lang) })}
+                  >
+                    ⤓ {t("export", lang)}
+                  </Button>
+                  <Button
+                    className="justify-start"
+                    variant="secondary"
+                    onClick={() => push({ type: "info", title: "Search", message: "Opened advanced search (demo)." })}
+                  >
+                    ⌕ {t("advancedSearch", lang)}
+                  </Button>
+                </div>
+
+                <div className="mt-4 rounded-lg border p-3 dark:border-slate-800">
+                  <div className="text-sm font-semibold">Keyboard tips</div>
+                  <ul className="mt-2 list-disc pl-5 text-sm text-secondary dark:text-slate-300 leading-relaxed">
+                    <li>Press <span className="font-semibold">Esc</span> to close modals</li>
+                    <li>Use <span className="font-semibold">Tab</span> to navigate controls</li>
+                    <li>Buttons include ARIA labels</li>
+                  </ul>
+                </div>
+              </Card>
+
+              <Card className="col-span-12 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold">{t("recentActivity", lang)}</div>
+                    <div className="text-sm text-secondary dark:text-slate-300">Avatars + timestamps + clean feed</div>
+                  </div>
+                </div>
+
+                <div className="mt-4 space-y-2">
+                  {loadingActs ? (
+                    <>
+                      <Skeleton className="h-14 w-full" />
+                      <Skeleton className="h-14 w-full" />
+                      <Skeleton className="h-14 w-full" />
+                    </>
+                  ) : (
+                    (activities ?? []).map((a) => (
+                      <div
+                        key={a.id}
+                        className="flex items-center justify-between rounded-lg border p-3 transition duration-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-9 w-9 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
+                            {a.actor.avatarUrl ? (
+                              <img src={a.actor.avatarUrl} alt={`${a.actor.name} avatar`} className="h-full w-full object-cover" loading="lazy" />
+                            ) : null}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-semibold">{a.message}</div>
+                            <div className="text-xs text-secondary dark:text-slate-400">{a.actor.name}</div>
+                          </div>
+                        </div>
+                        <div className="text-xs text-secondary dark:text-slate-400 whitespace-nowrap">{formatRelative(a.at, lang)}</div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
+          </div>
+        );
+      }
+
+      /* ===========================
+        Courses: DnD organization + search + filter chips + bulk actions
+      ============================ */
+      const ALL_TAGS = ["Onboarding", "Advanced", "Beginner", "Team", "Certification", "Workshop", "Microlearning"];
+      const ALL_CATS = ["All", "Design", "Engineering", "Business", "Data", "Languages"];
+
+      function CourseCard({
+        course,
+        selected,
+        onToggle,
+        onOpen,
+      }: {
+        course: Course;
+        selected: boolean;
+        onToggle: () => void;
+        onOpen: () => void;
+      }) {
+        return (
+          <Card className="overflow-hidden">
+            <button
+              className="w-full text-left"
+              onClick={onOpen}
+              aria-label={`Open course ${course.title}`}
+            >
+              <div className="relative h-32 bg-slate-100 dark:bg-slate-800">
+                <img
+                  src={course.coverUrl}
+                  alt={`${course.title} cover`}
+                  className="h-full w-full object-cover"
+                  loading="lazy"
+                />
+                <div className="absolute left-3 top-3 flex items-center gap-2">
+                  <label className="inline-flex items-center gap-2 rounded-lg bg-white/90 px-2 py-1 text-xs font-semibold text-slate-900 backdrop-blur dark:bg-slate-900/85 dark:text-slate-100">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        onToggle();
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="h-4 w-4 accent-primary"
+                      aria-label={`Select course ${course.title}`}
+                    />
+                    Select
+                  </label>
+                </div>
+              </div>
+
+              <div className="p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="truncate font-semibold">{course.title}</div>
+                    <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                      {course.category} • {course.owner} • {course.students} students
+                    </div>
+                  </div>
+                  <Pill color="blue">{Math.round(course.progress)}%</Pill>
+                </div>
+
+                <div className="mt-3">
+                  <div className="h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800" aria-hidden="true">
+                    <div
+                      className="h-2 rounded-full bg-primary transition duration-300"
+                      style={{ width: `${clamp(course.progress, 0, 100)}%` }}
+                    />
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {course.tags.map((tag) => (
+                      <Pill key={tag} color="slate">{tag}</Pill>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="mt-3 text-xs text-secondary dark:text-slate-400">
+                  Updated {formatRelative(course.updatedAt, "en")}
+                </div>
+              </div>
+            </button>
+          </Card>
+        );
+      }
+
+      function Courses({ lang }: { lang: Lang }) {
+        const { push } = useToasts();
+        const qc = useQueryClient();
+
+        const [q, setQ] = useState("");
+        const debouncedQ = useDebouncedValue(q, 350);
+
+        const [category, setCategory] = useState<string>("All");
+        const [selectedTags, setSelectedTags] = useState<string[]>([]);
+        const [selectedIds, setSelectedIds] = useState<string[]>([]);
+
+        // Pagination-like query (kept simple)
+        const { data, isLoading, isFetching } = useQuery({
+          queryKey: ["courses", { q: debouncedQ, category, selectedTags }],
+          queryFn: () => mockAPI.courses({ q: debouncedQ, category, tags: selectedTags, page: 1, pageSize: 12 }),
+          staleTime: 12_000,
+        });
+
+        // DnD ordering
+        const [order, setOrder] = useState<string[]>([]);
+        useEffect(() => {
+          if (data?.items?.length) {
+            setOrder(data.items.map((c) => c.id));
+          }
+        }, [data?.items?.map((c) => c.id).join(",")]);
+
+        const updateOrder = useMutation({
+          mutationFn: mockAPI.updateCourseOrder,
+          onSuccess: async () => {
+            push({ type: "success", title: "Courses", message: "Order saved." });
+            await qc.invalidateQueries({ queryKey: ["courses"] });
+          },
+          onError: () => push({ type: "error", title: "Courses", message: "Failed to save order." }),
+        });
+
+        const items = useMemo(() => {
+          if (!data?.items) return [];
+          const map = new Map(data.items.map((c) => [c.id, c]));
+          const ordered = order.map((id) => map.get(id)).filter(Boolean) as Course[];
+          // Append any missing due to filter changes
+          data.items.forEach((c) => {
+            if (!order.includes(c.id)) ordered.push(c);
+          });
+          return ordered;
+        }, [data?.items, order]);
+
+        const toggleTag = (tag: string) => {
+          setSelectedTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]));
+        };
+
+        const toggleSelected = (id: string) => {
+          setSelectedIds((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]));
+        };
+
+        const selectAll = () => {
+          const all = items.map((c) => c.id);
+          setSelectedIds((prev) => (prev.length === all.length ? [] : all));
+        };
+
+        const clearFilters = () => {
+          setCategory("All");
+          setSelectedTags([]);
+          setQ("");
+          setSelectedIds([]);
+        };
+
+        // Drag & drop handlers (accessible-ish: also supports keyboard reorder via buttons in modal)
+        const dragId = useRef<string | null>(null);
+
+        const onDragStart = (id: string) => (e: React.DragEvent) => {
+          dragId.current = id;
+          e.dataTransfer.effectAllowed = "move";
+        };
+
+        const onDragOver = (overId: string) => (e: React.DragEvent) => {
+          e.preventDefault();
+          const from = dragId.current;
+          if (!from || from === overId) return;
+          setOrder((prev) => {
+            const p = [...prev];
+            const fromIdx = p.indexOf(from);
+            const overIdx = p.indexOf(overId);
+            if (fromIdx < 0 || overIdx < 0) return prev;
+            p.splice(fromIdx, 1);
+            p.splice(overIdx, 0, from);
+            return p;
+          });
+        };
+
+        const [openCourse, setOpenCourse] = useState<Course | null>(null);
+
+        const bulkExport = () => {
+          const selected = items.filter((c) => selectedIds.includes(c.id));
+          const csv =
+            "id,title,category,students,progress\n" +
+            selected.map((c) => `${c.id},"${c.title}",${c.category},${c.students},${c.progress}`).join("\n");
+          downloadText("courses_export.csv", csv);
+          push({ type: "info", title: "Export", message: t("toastExported", lang) });
+        };
+
+        const bulkArchive = () => {
+          push({ type: "success", title: "Bulk action", message: `Archived ${selectedIds.length} courses (demo).` });
+          setSelectedIds([]);
+        };
+
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="text-xl font-semibold">{t("courses", lang)}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                  Drag-and-drop organization, filter chips, bulk actions, debounced search.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={bulkExport} disabled={!selectedIds.length}>
+                  ⤓ {t("export", lang)}
+                </Button>
+                <Button variant="secondary" onClick={bulkArchive} disabled={!selectedIds.length}>
+                  🗄 Archive
+                </Button>
+                <Button onClick={() => push({ type: "success", title: "Course", message: t("toastCreated", lang) })}>
+                  ➕ {t("createCourse", lang)}
+                </Button>
+              </div>
+            </div>
+
+            <Card className="p-4">
+              <div className="grid grid-cols-12 gap-3">
+                <div className="col-span-12 md:col-span-5">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">Search</label>
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder={t("search", lang)}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                    aria-label="Search courses"
+                  />
+                  <div className="mt-1 text-xs text-secondary dark:text-slate-400">Debounced input • Smooth updates</div>
+                </div>
+
+                <div className="col-span-12 md:col-span-3">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">Category</label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                    aria-label="Filter by category"
+                  >
+                    {ALL_CATS.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="col-span-12 md:col-span-4">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">{t("filters", lang)}</label>
+                  <div className="mt-1 flex gap-2 overflow-x-auto no-scrollbar">
+                    {ALL_TAGS.map((tag) => {
+                      const active = selectedTags.includes(tag);
+                      return (
+                        <button
+                          key={tag}
+                          onClick={() => toggleTag(tag)}
+                          className={cx(
+                            "whitespace-nowrap rounded-full px-3 py-2 text-xs font-semibold transition duration-300",
+                            active
+                              ? "bg-accent text-white"
+                              : "bg-slate-100 text-slate-800 hover:bg-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                          )}
+                          aria-pressed={active}
+                        >
+                          {tag}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <label className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition duration-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                    <input
+                                            type="checkbox"
+                      checked={selectedIds.length > 0 && selectedIds.length === items.length}
+                      onChange={selectAll}
+                      className="h-4 w-4 accent-primary"
+                      aria-label={t("selectAll", lang)}
+                    />
+                    {t("selectAll", lang)}
+                  </label>
+
+                  <button
+                    onClick={clearFilters}
+                    className="rounded-lg px-3 py-2 text-sm font-semibold text-secondary transition duration-300 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800/40"
+                    aria-label={t("clear", lang)}
+                  >
+                    {t("clear", lang)}
+                  </button>
+
+                  <div className="text-sm text-secondary dark:text-slate-300">
+                    {data?.total ?? 0} total • {selectedIds.length} selected
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => updateOrder.mutate(order)}
+                    disabled={updateOrder.isPending || !items.length}
+                    aria-label="Save course order"
+                  >
+                    💾 Save order
+                  </Button>
+                  {isFetching ? (
+                    <span className="text-xs text-secondary dark:text-slate-400">Updating…</span>
+                  ) : null}
+                </div>
+              </div>
+            </Card>
+
+            {/* DnD grid */}
+            {isLoading ? (
+              <div className="grid grid-cols-12 gap-4">
+                {Array.from({ length: 8 }).map((_, i) => (
+                  <Skeleton key={i} className="col-span-12 sm:col-span-6 lg:col-span-4 h-[290px]" />
+                ))}
+              </div>
+            ) : (
+              <div className="grid grid-cols-12 gap-4">
+                {items.map((course) => (
+                  <div
+                    key={course.id}
+                    className="col-span-12 sm:col-span-6 lg:col-span-4"
+                    draggable
+                    onDragStart={onDragStart(course.id)}
+                    onDragOver={onDragOver(course.id)}
+                    aria-label={`Draggable course card ${course.title}`}
+                  >
+                    <CourseCard
+                      course={course}
+                      selected={selectedIds.includes(course.id)}
+                      onToggle={() => toggleSelected(course.id)}
+                      onOpen={() => setOpenCourse(course)}
+                    />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <div className="text-xs text-secondary dark:text-slate-400">
+              Tip: Drag cards to reorder. Order is saved with “Save order”.
+            </div>
+
+            {/* Course details modal */}
+            <Modal
+              open={!!openCourse}
+              title={openCourse ? openCourse.title : "Course"}
+              onClose={() => setOpenCourse(null)}
+            >
+              {openCourse ? (
+                <CourseDetails
+                  course={openCourse}
+                  lang={lang}
+                  selected={selectedIds.includes(openCourse.id)}
+                  onToggleSelect={() => toggleSelected(openCourse.id)}
+                  onMoveUp={() => {
+                    setOrder((prev) => {
+                      const idx = prev.indexOf(openCourse.id);
+                      if (idx <= 0) return prev;
+                      const p = [...prev];
+                      [p[idx - 1], p[idx]] = [p[idx], p[idx - 1]];
+                      return p;
+                    });
+                  }}
+                  onMoveDown={() => {
+                    setOrder((prev) => {
+                      const idx = prev.indexOf(openCourse.id);
+                      if (idx < 0 || idx >= prev.length - 1) return prev;
+                      const p = [...prev];
+                      [p[idx], p[idx + 1]] = [p[idx + 1], p[idx]];
+                      return p;
+                    });
+                  }}
+                  onExportOne={() => {
+                    const c = openCourse;
+                    const csv = "id,title,category,students,progress\n" + `${c.id},"${c.title}",${c.category},${c.students},${c.progress}\n`;
+                    downloadText(`${c.id}.csv`, csv);
+                    push({ type: "info", title: "Export", message: "Exported course CSV." });
+                  }}
+                />
+              ) : null}
+            </Modal>
+          </div>
+        );
+      }
+
+      function CourseDetails({
+        course,
+        lang,
+        selected,
+        onToggleSelect,
+        onMoveUp,
+        onMoveDown,
+        onExportOne,
+      }: {
+        course: Course;
+        lang: Lang;
+        selected: boolean;
+        onToggleSelect: () => void;
+        onMoveUp: () => void;
+        onMoveDown: () => void;
+        onExportOne: () => void;
+      }) {
+        return (
+          <div className="space-y-4">
+            <div className="grid grid-cols-12 gap-4">
+              <div className="col-span-12 md:col-span-5">
+                <div className="overflow-hidden rounded-lg border dark:border-slate-800">
+                  <img src={course.coverUrl} alt="" className="h-40 w-full object-cover" loading="lazy" />
+                </div>
+              </div>
+              <div className="col-span-12 md:col-span-7">
+                <div className="flex flex-wrap items-center gap-2">
+                  <Pill color="blue">{course.category}</Pill>
+                  <Pill color="slate">{course.owner}</Pill>
+                  <Pill color="green">{course.students} students</Pill>
+                  <Pill color="amber">{Math.round(course.progress)}%</Pill>
+                </div>
+
+                <div className="mt-3 text-sm text-secondary dark:text-slate-300 leading-relaxed">
+                  This is a demo course panel showing “production-minded” actions, keyboard-friendly controls, and simple RBAC patterns.
+                </div>
+
+                <div className="mt-4">
+                  <div className="text-xs font-semibold text-secondary dark:text-slate-300">Progress</div>
+                  <div className="mt-1 h-2 w-full rounded-full bg-slate-100 dark:bg-slate-800" aria-hidden="true">
+                    <div className="h-2 rounded-full bg-primary transition duration-300" style={{ width: `${clamp(course.progress, 0, 100)}%` }} />
+                  </div>
+                  <div className="mt-2 text-xs text-secondary dark:text-slate-400">
+                    Updated {formatRelative(course.updatedAt, lang)}
+                  </div>
+                </div>
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  <label className="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition duration-300 hover:bg-slate-50 dark:border-slate-800 dark:hover:bg-slate-800/40">
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      onChange={onToggleSelect}
+                      className="h-4 w-4 accent-primary"
+                      aria-label={`Select ${course.title}`}
+                    />
+                    Select
+                  </label>
+
+                  <Button variant="secondary" size="sm" onClick={onMoveUp} aria-label="Move course up">
+                    ↑ Move up
+                  </Button>
+                  <Button variant="secondary" size="sm" onClick={onMoveDown} aria-label="Move course down">
+                    ↓ Move down
+                  </Button>
+
+                  <Button variant="secondary" size="sm" onClick={onExportOne} aria-label="Export this course">
+                    ⤓ Export
+                  </Button>
+                </div>
+              </div>
+            </div>
+
+            <Card className="p-4">
+              <div className="font-semibold">Tags</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {course.tags.map((tag) => (
+                  <Pill key={tag} color="slate">
+                    {tag}
+                  </Pill>
+                ))}
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      /* ===========================
+        Students: infinite scroll + search + status filter + modal form (RHF)
+      ============================ */
+      function Students({ lang }: { lang: Lang }) {
+        const { push } = useToasts();
+        const qc = useQueryClient();
+
+        const [q, setQ] = useState("");
+        const dq = useDebouncedValue(q, 350);
+        const [status, setStatus] = useState<EnrollmentStatus | "all">("all");
+        const [open, setOpen] = useState(false);
+
+        const pageSize = 18;
+
+        const inf = useInfiniteQuery({
+          queryKey: ["students", { q: dq, status }],
+          queryFn: ({ pageParam }) => mockAPI.studentsPage({ page: pageParam, pageSize, q: dq, status }),
+          initialPageParam: 1,
+          getNextPageParam: (last, all) => {
+            const loaded = all.reduce((acc, p) => acc + p.items.length, 0);
+            return loaded < last.total ? all.length + 1 : undefined;
+          },
+          staleTime: 12_000,
+        });
+
+        const allStudents = useMemo(() => {
+          const pages = inf.data?.pages ?? [];
+          return pages.flatMap((p) => p.items);
+        }, [inf.data]);
+
+        const total = inf.data?.pages?.[0]?.total ?? 0;
+        const canLoadMore = allStudents.length < total;
+
+        const sentinelRef = useInfiniteScroll({
+          enabled: canLoadMore && !inf.isFetchingNextPage,
+          onLoadMore: () => inf.fetchNextPage(),
+          rootMargin: "500px",
+        });
+
+        const save = useMutation({
+          mutationFn: mockAPI.saveStudent,
+          onSuccess: async () => {
+            push({ type: "success", title: "Students", message: t("toastSaved", lang) });
+            setOpen(false);
+            await qc.invalidateQueries({ queryKey: ["students"] });
+          },
+          onError: (e: any) => push({ type: "error", title: "Students", message: e?.message ?? "Failed" }),
+        });
+
+        return (
+          <div className="space-y-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="text-xl font-semibold">{t("students", lang)}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                  Infinite scroll, debounced search, status filter, modal form.
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button variant="secondary" onClick={() => push({ type: "info", title: "Bulk", message: "Bulk actions center (demo)." })}>
+                  {t("bulkActions", lang)}
+                </Button>
+                <Button onClick={() => setOpen(true)}>➕ {t("addStudent", lang)}</Button>
+              </div>
+            </div>
+
+            <Card className="p-4">
+              <div className="grid grid-cols-12 gap-3">
+                <div className="col-span-12 md:col-span-7">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">Search</label>
+                  <input
+                    value={q}
+                    onChange={(e) => setQ(e.target.value)}
+                    placeholder={t("search", lang)}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                    aria-label="Search students"
+                  />
+                </div>
+                <div className="col-span-12 md:col-span-5">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">{t("enrollmentStatus", lang)}</label>
+                  <select
+                    value={status}
+                    onChange={(e) => setStatus(e.target.value as any)}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                    aria-label="Filter by status"
+                  >
+                    <option value="all">All</option>
+                    <option value="active">active</option>
+                    <option value="pending">pending</option>
+                    <option value="suspended">suspended</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="mt-4 text-sm text-secondary dark:text-slate-300">
+                Showing <span className="font-semibold">{allStudents.length}</span> of <span className="font-semibold">{total}</span>
+                {canLoadMore ? <span className="ml-2 text-xs">• {t("infiniteScrollHint", lang)}</span> : null}
+              </div>
+            </Card>
+
+            <Card className="p-0 overflow-hidden">
+              <div className="divide-y dark:divide-slate-800">
+                {inf.isLoading ? (
+                  <div className="p-4 space-y-2">
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                    <Skeleton className="h-14 w-full" />
+                  </div>
+                ) : (
+                  allStudents.map((s) => (
+                    <div
+                      key={s.id}
+                      className="p-3 transition duration-300 hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                    >
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div className="h-10 w-10 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
+                            {s.avatarUrl ? <img src={s.avatarUrl} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold">{s.name}</div>
+                            <div className="truncate text-sm text-secondary dark:text-slate-300">{s.email}</div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <Pill
+                            color={s.status === "active" ? "green" : s.status === "pending" ? "amber" : "red"}
+                          >
+                            {s.status}
+                          </Pill>
+                          <Pill color="slate">{s.enrolledCourses} courses</Pill>
+                          <div className="text-xs text-secondary dark:text-slate-400 whitespace-nowrap">
+                            {formatRelative(s.lastActiveAt, lang)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+
+                <div ref={sentinelRef as any} className="p-4 text-center text-xs text-secondary dark:text-slate-400">
+                  {inf.isFetchingNextPage ? "Loading more…" : canLoadMore ? " " : "End of list"}
+                </div>
+              </div>
+            </Card>
+
+            <Modal open={open} title="Add student" onClose={() => setOpen(false)}>
+              <StudentForm
+                lang={lang}
+                saving={save.isPending}
+                onSubmit={(payload) => save.mutate(payload)}
+                onCancel={() => setOpen(false)}
+              />
+            </Modal>
+          </div>
+        );
+      }
+
+      function StudentForm({
+        lang,
+        saving,
+        onSubmit,
+        onCancel,
+      }: {
+        lang: Lang;
+        saving: boolean;
+        onSubmit: (p: Partial<Student>) => void;
+        onCancel: () => void;
+      }) {
+        const { control, handleSubmit, formState, reset } = useForm<Partial<Student>>({
+          defaultValues: { name: "", email: "", status: "pending", enrolledCourses: 0, avatarUrl: "" },
+          mode: "onChange",
+        });
+
+        const submit = handleSubmit((vals) => {
+          onSubmit(vals);
+          reset();
+        });
+
+        return (
+          <form onSubmit={submit} className="space-y-4">
+            <div className="grid grid-cols-12 gap-3">
+              <div className="col-span-12 md:col-span-6">
+                <label className="text-xs font-semibold text-secondary dark:text-slate-300">Name</label>
+                <Controller
+                  control={control}
+                  name="name"
+                  rules={{ required: true, minLength: 2 }}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                      placeholder="Full name"
+                      aria-invalid={!!formState.errors.name}
+                    />
+                  )}
+                />
+                {formState.errors.name ? <div className="mt-1 text-xs text-red-600">Name is required.</div> : null}
+              </div>
+
+              <div className="col-span-12 md:col-span-6">
+                <label className="text-xs font-semibold text-secondary dark:text-slate-300">Email</label>
+                <Controller
+                  control={control}
+                  name="email"
+                  rules={{
+                    required: true,
+                    pattern: /^[^\s@]+@[^\s@]+\.[^\s@]+$/,
+                  }}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                      placeholder="name@example.com"
+                      aria-invalid={!!formState.errors.email}
+                    />
+                  )}
+                />
+                {formState.errors.email ? <div className="mt-1 text-xs text-red-600">Valid email is required.</div> : null}
+              </div>
+
+              <div className="col-span-12 md:col-span-6">
+                <label className="text-xs font-semibold text-secondary dark:text-slate-300">{t("enrollmentStatus", lang)}</label>
+                <Controller
+                  control={control}
+                  name="status"
+                  render={({ field }) => (
+                    <select
+                      {...field}
+                      className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                    >
+                      <option value="active">active</option>
+                      <option value="pending">pending</option>
+                      <option value="suspended">suspended</option>
+                    </select>
+                  )}
+                />
+              </div>
+
+              <div className="col-span-12 md:col-span-6">
+                <label className="text-xs font-semibold text-secondary dark:text-slate-300">Enrolled courses</label>
+                <Controller
+                  control={control}
+                  name="enrolledCourses"
+                  rules={{ min: 0 }}
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      type="number"
+                      className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                      min={0}
+                    />
+                  )}
+                />
+              </div>
+
+              <div className="col-span-12">
+                <label className="text-xs font-semibold text-secondary dark:text-slate-300">{t("uploadAvatar", lang)} (URL)</label>
+                <Controller
+                  control={control}
+                  name="avatarUrl"
+                  render={({ field }) => (
+                    <input
+                      {...field}
+                      className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                      placeholder="https://…"
+                    />
+                  )}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2">
+              <Button type="button" variant="ghost" onClick={onCancel}>
+                {t("cancel", lang)}
+              </Button>
+              <Button type="submit" disabled={!formState.isValid || saving}>
+                {saving ? "Saving…" : t("save", lang)}
+              </Button>
+            </div>
+          </form>
+        );
+      }
+
+      /* ===========================
+        Content: rich text demo + version history diff
+      ============================ */
+      function Content({ lang }: { lang: Lang }) {
+        const { push } = useToasts();
+        const { data: versions, isLoading } = useQuery({
+          queryKey: ["versions"],
+          queryFn: mockAPI.contentVersions,
+          staleTime: 20_000,
+        });
+
+        const [text, setText] = useState<string>(() => {
+          return localStorage.getItem("cms_richtext") ?? "## Module Overview\nWrite rich content here…\n\n- Use **bold**\n- Use _italic_\n- Use lists\n";
+        });
+
+        useEffect(() => {
+          localStorage.setItem("cms_richtext", text);
+        }, [text]);
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-xl font-semibold">{t("content", lang)}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                  Lightweight editor + version history with diff styling (demo).
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="secondary"
+                  onClick={() => push({ type: "success", title: "Content", message: t("toastSaved", lang) })}
+                >
+                  {t("save", lang)}
+                </Button>
+                <Button
+                  onClick={() => push({ type: "info", title: "Publish", message: "Published changes (demo)." })}
+                >
+                  Publish
+                </Button>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-12 gap-4">
+              <Card className="col-span-12 lg:col-span-7 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold">{t("richTextEditor", lang)}</div>
+                    <div className="text-sm text-secondary dark:text-slate-300">Stored locally • Markdown-ish</div>
+                  </div>
+                </div>
+
+                <textarea
+                  value={text}
+                  onChange={(e) => setText(e.target.value)}
+                  className="mt-4 h-72 w-full rounded-lg border bg-white p-3 text-sm leading-relaxed transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                  aria-label="Rich text editor"
+                />
+
+                <div className="mt-3 rounded-lg border p-3 text-sm dark:border-slate-800">
+                  <div className="font-semibold">Preview</div>
+                  <div className="mt-2 whitespace-pre-wrap text-secondary dark:text-slate-300">{text}</div>
+                </div>
+              </Card>
+
+              <Card className="col-span-12 lg:col-span-5 p-4">
+                <div className="font-semibold">{t("versionHistory", lang)}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">Diff highlight • Author • Timestamp</div>
+
+                <div className="mt-4 space-y-2">
+                  {isLoading ? (
+                    <>
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                      <Skeleton className="h-20 w-full" />
+                    </>
+                  ) : (
+                    (versions ?? []).map((v) => (
+                      <div key={v.id} className="rounded-lg border p-3 dark:border-slate-800">
+                        <div className="flex items-start justify-between gap-3">
+                          <div>
+                            <div className="text-sm font-semibold">{v.summary}</div>
+                            <div className="text-xs text-secondary dark:text-slate-400">
+                              {v.author} • {formatRelative(v.at, lang)}
+                            </div>
+                          </div>
+                          <Pill color="slate">{v.id}</Pill>
+                        </div>
+
+                        <div className="mt-3 rounded-lg bg-slate-50 p-2 text-xs dark:bg-slate-800/40">
+                          {v.diff.map((d, i) => (
+                            <div
+                              key={i}
+                              className={cx(
+                                "rounded px-2 py-1 font-mono",
+                                d.type === "add" && "diff-add",
+                                d.type === "del" && "diff-del"
+                              )}
+                            >
+                              {d.text}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </Card>
+            </div>
+          </div>
+        );
+      }
+
+      /* ===========================
+        Analytics: charts + KPIs
+      ============================ */
+      function Analytics({ lang }: { lang: Lang }) {
+        const { dark } = useTheme();
+        const { data, isLoading } = useQuery({
+          queryKey: ["metrics"],
+          queryFn: mockAPI.metrics,
+          staleTime: 15_000,
+        });
+
+        return (
+          <div className="space-y-4">
+            <div>
+              <div className="text-xl font-semibold">{t("analytics", lang)}</div>
+              <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                Re-uses server state (React Query) + Chart.js styling.
+              </div>
+            </div>
+
+            <div className="grid grid-cols-12 gap-4">
+              <Card className="col-span-12 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="font-semibold">Enrollments vs completions</div>
+                    <div className="text-sm text-secondary dark:text-slate-300">Same dataset as dashboard</div>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  {isLoading ? (
+                    <Skeleton className="h-64 w-full" />
+                  ) : (
+                    <LineChart
+                      id="chart_analytics"
+                      labels={data!.chart.labels}
+                      a={data!.chart.enrollments}
+                      b={data!.chart.completions}
+                      dark={dark}
+                    />
+                  )}
+                </div>
+              </Card>
+
+              <Card className="col-span-12 md:col-span-4 p-4">
+                <div className="font-semibold">Completion rate</div>
+                <div className="mt-2 text-3xl font-semibold">{isLoading ? "—" : `${data!.completionRate}%`}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                  KPI aggregated across active courses
+                </div>
+              </Card>
+
+              <Card className="col-span-12 md:col-span-4 p-4">
+                <div className="font-semibold">Active now</div>
+                <div className="mt-2 text-3xl font-semibold">{isLoading ? "—" : `${data!.activeNow}`}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                  Live presence (demo polling)
+                </div>
+              </Card>
+
+              <Card className="col-span-12 md:col-span-4 p-4">
+                <div className="font-semibold">Total students</div>
+                <div className="mt-2 text-3xl font-semibold">{isLoading ? "—" : `${data!.totalStudents}`}</div>
+                <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                  Managed learners in system
+                </div>
+              </Card>
+            </div>
+          </div>
+        );
+      }
+
+      /* ===========================
+        Settings: profile + preferences
+      ============================ */
+      function Settings({ lang }: { lang: Lang }) {
+        const { auth } = useAuth();
+        const { push } = useToasts();
+        if (auth.status !== "ready") return null;
+
+        return (
+          <div className="space-y-4">
+            <div>
+              <div className="text-xl font-semibold">{t("settings", lang)}</div>
+              <div className="mt-1 text-sm text-secondary dark:text-slate-300">
+                Profile preferences (demo). Admin-only section by RBAC.
+              </div>
+            </div>
+
+            <Card className="p-4">
+              <div className="flex items-center gap-3">
+                <div className="h-12 w-12 overflow-hidden rounded-lg bg-slate-100 dark:bg-slate-800">
+                  {auth.user.avatarUrl ? <img src={auth.user.avatarUrl} alt="" className="h-full w-full object-cover" loading="lazy" /> : null}
+                </div>
+                <div className="min-w-0">
+                  <div className="font-semibold">{auth.user.name}</div>
+                  <div className="text-sm text-secondary dark:text-slate-300">{auth.user.email}</div>
+                </div>
+              </div>
+
+              <div className="mt-4 grid grid-cols-12 gap-3">
+                <div className="col-span-12 md:col-span-6">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">Display name</label>
+                  <input
+                    defaultValue={auth.user.name}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                  />
+                </div>
+                <div className="col-span-12 md:col-span-6">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">Email</label>
+                  <input
+                    defaultValue={auth.user.email}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                  />
+                </div>
+                <div className="col-span-12">
+                  <label className="text-xs font-semibold text-secondary dark:text-slate-300">Avatar URL</label>
+                  <input
+                    defaultValue={auth.user.avatarUrl ?? ""}
+                    className="mt-1 h-10 w-full rounded-lg border bg-white px-3 text-sm transition duration-300 dark:bg-slate-900 dark:border-slate-800"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex justify-end gap-2">
+                <Button variant="secondary" onClick={() => push({ type: "success", title: "Settings", message: t("toastSaved", lang) })}>
+                  {t("save", lang)}
+                </Button>
+              </div>
+            </Card>
+
+            <Card className="p-4">
+              <div className="font-semibold">System</div>
+              <div className="mt-2 text-sm text-secondary dark:text-slate-300">
+                In production: audit log, SSO settings, API keys, roles & permissions, org settings, etc.
+              </div>
+            </Card>
+          </div>
+        );
+      }
+
+      /* ===========================
+        Root
+      ============================ */
+      const queryClient = new QueryClient({
+        defaultOptions: {
+          queries: { retry: 1, refetchOnWindowFocus: false },
+        },
+      });
+
+      function App() {
+        const [nav, setNav] = useState<NavKey>("dashboard");
+        const [lang, setLang] = useState<Lang>(() => (localStorage.getItem("cms_lang") as Lang) || "en");
+
+        useEffect(() => {
+          localStorage.setItem("cms_lang", lang);
+          // RTL for Hebrew
+          document.documentElement.dir = lang === "he" ? "rtl" : "ltr";
+        }, [lang]);
+
+        return (
+          <QueryClientProvider client={queryClient}>
+            <AuthProvider>
+              <ThemeProvider>
+                <ToastProvider>
+                  <AppShell nav={nav} setNav={setNav} lang={lang} setLang={setLang} />
+                </ToastProvider>
+              </ThemeProvider>
+            </AuthProvider>
+          </QueryClientProvider>
+        );
+      }
+
+      createRoot(document.getElementById("root")).render(<App />);
+    </script>
+  </body>
+</html>
+
