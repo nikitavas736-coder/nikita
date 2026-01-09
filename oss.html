@@ -1,0 +1,919 @@
+<!DOCTYPE html>
+<html lang="en" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>CourseFlow – Modern Course Management System</title>
+
+  <!-- Inter Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+
+  <!-- Font‑Awesome (icons) -->
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+        rel="stylesheet">
+
+  <!-- Quill Rich‑Text Editor -->
+  <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
+
+  <!-- Tailwind (configured via script) -->
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            primary: '#2563eb',
+            secondary: '#64748b',
+            accent: '#10b981',
+            background: '#f8fafc',
+            text: '#1e293b',
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', '-apple-system', 'sans-serif'] },
+          borderRadius: { lg: '8px' },
+          transitionDuration: { DEFAULT: '300' },
+          boxShadow: { card: '0 4px 6px -1px rgba(0,0,0,0.1), 0 2px 4px -1px rgba(0,0,0,0.06)' },
+        },
+      },
+    };
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <style>
+    :root {
+      --card-shadow: 0 4px 6px -1px rgba(0,0,0,0.1),0 2px 4px -1px rgba(0,0,0,0.06);
+    }
+    .card { border-radius:8px; box-shadow:var(--card-shadow); transition:all 300ms ease-in-out; }
+    .dark .card { background:#1e293b; }
+    .skeleton { animation:pulse 2s cubic-bezier(.4,0,.6,1) infinite; background:#e5e7eb; border-radius:4px; }
+    .dark .skeleton { background:#374151; }
+    @keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
+    .toast-enter{animation:toastIn .3s forwards}
+    .toast-leave{animation:toastOut .3s forwards}
+    @keyframes toastIn{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
+    @keyframes toastOut{from{opacity:1;transform:translateY(0)}to{opacity:0;transform:translateY(20px)}}
+  </style>
+</head>
+<body class="bg-background text-text font-sans min-h-screen">
+
+  <!-- Toast container -->
+  <div id="toast-container" class="fixed top-4 right-4 space-y-2 z-50"></div>
+
+  <!-- React root -->
+  <div id="root"></div>
+
+  <!-- Core libraries (no bundler needed) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@tanstack/react-query@4.28.0/dist/react-query.development.js"></script>
+  <script src="https://unpkg.com/react-hook-form/dist/index.umd.js"></script>
+  <script src="https://unpkg.com/framer-motion/dist/framer-motion.umd.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://unpkg.com/i18next@22/umd/i18next.min.js"></script>
+  <script src="https://cdn.quilljs.com/1.3.6/quill.min.js"></script>
+
+  <!-- Application code (JSX/TSX compiled on the fly) -->
+  <script type="text/babel" data-presets="env,react">
+
+    /* ------------------- Utility: Toasts ------------------- */
+    function showToast(message, type = 'success') {
+      const ev = new CustomEvent('show-toast', { detail: { message, type } });
+      window.dispatchEvent(ev);
+    }
+
+    /* ------------------- i18n init ------------------- */
+    i18next.init({
+      lng: 'en',
+      resources: {
+        en: { translation: {
+          dashboard: 'Dashboard',
+          courses: 'Courses',
+          students: 'Students',
+          content: 'Content',
+          analytics: 'Analytics',
+          settings: 'Settings',
+          total_courses: 'Total Courses',
+          active_students: 'Active Students',
+          completion_rate: 'Completion Rate',
+          avg_rating: 'Avg. Rating',
+          enrollment_trends: 'Enrollment Trends',
+          recent_activity: 'Recent Activity',
+          progress: 'Progress',
+          search_placeholder: 'Search courses...',
+          add_course: 'Add Course',
+          title: 'Title',
+          description: 'Description',
+          save: 'Save',
+          cancel: 'Cancel',
+          bulk_actions: 'Bulk Actions',
+          delete_selected: 'Delete Selected',
+          new_enrollments: 'New Enrollments',
+          completions: 'Completions',
+          write_content_here: 'Write something amazing...',
+          rich_text_editor: 'Rich Text Editor',
+          upload_files: 'File Upload',
+          drag_drop_or_click: 'Drag & drop files here or click to browse',
+          browse_files: 'Browse Files',
+          media_gallery: 'Media Gallery',
+          completion_rate_by_course: 'Completion Rate by Course',
+          student_engagement: 'Student Engagement',
+          active: 'Active',
+          inactive: 'Inactive',
+          pending: 'Pending',
+          role: 'Role',
+          notifications: 'Notifications',
+          export: 'Export',
+          course_added: 'Course added successfully!',
+          new_course: 'New Course',
+          metrics: 'Metrics',
+          quick_actions: 'Quick Actions',
+          language: 'Language',
+          dark_mode: 'Dark Mode',
+          light_mode: 'Light Mode',
+          loading: 'Loading',
+          selected: 'selected',
+        }},
+        es: { translation: {
+          dashboard: 'Tablero',
+          courses: 'Cursos',
+          students: 'Estudiantes',
+          content: 'Contenido',
+          analytics: 'Analítica',
+          settings: 'Configuración',
+          total_courses: 'Cursos Totales',
+          active_students: 'Estudiantes Activos',
+          completion_rate: 'Tasa de Finalización',
+          avg_rating: 'Calificación Media',
+          enrollment_trends: 'Tendencias de Inscripción',
+          recent_activity: 'Actividad Reciente',
+          progress: 'Progreso',
+          search_placeholder: 'Buscar cursos...',
+          add_course: 'Agregar Curso',
+          title: 'Título',
+          description: 'Descripción',
+          save: 'Guardar',
+          cancel: 'Cancelar',
+          bulk_actions: 'Acciones Masivas',
+          delete_selected: 'Eliminar Seleccionados',
+          new_enrollments: 'Nuevas Inscripciones',
+          completions: 'Completaciones',
+          write_content_here: 'Escribe algo increíble...',
+          rich_text_editor: 'Editor de Texto Enriquecido',
+          upload_files: 'Subir Archivos',
+          drag_drop_or_click: 'Arrastra y suelta archivos aquí o haz clic para buscar',
+          browse_files: 'Buscar Archivos',
+          media_gallery: 'Galería de Medios',
+          completion_rate_by_course: 'Tasa de Finalización por Curso',
+          student_engagement: 'Compromiso del Estudiante',
+          active: 'Activo',
+          inactive: 'Inactivo',
+          pending: 'Pendiente',
+          role: 'Rol',
+          notifications: 'Notificaciones',
+          export: 'Exportar',
+          course_added: '¡Curso agregado exitosamente!',
+          new_course: 'Nuevo Curso',
+          metrics: 'Métricas',
+          quick_actions: 'Acciones Rápidas',
+          language: 'Idioma',
+          dark_mode: 'Modo Oscuro',
+          light_mode: 'Modo Claro',
+          loading: 'Cargando',
+          selected: 'seleccionado(s)',
+        }},
+      },
+    });
+
+    /* ------------------- Contexts ------------------- */
+    const ThemeContext = React.createContext();
+    const LanguageContext = React.createContext();
+    const UserContext = React.createContext();
+    const NotificationsContext = React.createContext();
+
+    const ThemeProvider = ({ children }) => {
+      const [isDark, setIsDark] = React.useState(() => localStorage.getItem('theme') === 'dark');
+      React.useEffect(() => {
+        const root = document.documentElement;
+        if (isDark) root.classList.add('dark');
+        else root.classList.remove('dark');
+        localStorage.setItem('theme', isDark ? 'dark' : 'light');
+      }, [isDark]);
+      const toggle = () => setIsDark(!isDark);
+      return <ThemeContext.Provider value={{ isDark, toggle }}>{children}</ThemeContext.Provider>;
+    };
+
+    const LanguageProvider = ({ children }) => {
+      const [lang, setLang] = React.useState('en');
+      React.useEffect(() => i18next.changeLanguage(lang), [lang]);
+      return <LanguageContext.Provider value={{ lang, setLang }}>{children}</LanguageContext.Provider>;
+    };
+
+    const UserProvider = ({ children }) => {
+      const user = { name: 'Admin User', email: 'admin@example.com', role: 'admin' };
+      return <UserContext.Provider value={{ user }}>{children}</UserContext.Provider>;
+    };
+
+    const NotificationsProvider = ({ children }) => {
+      const [notifications, setNotifications] = React.useState([]);
+      React.useEffect(() => {
+        const interval = setInterval(() => {
+          const n = { id: Date.now(), message: `New activity at ${new Date().toLocaleTimeString()}`, type: 'info' };
+          setNotifications(prev => [...prev, n]);
+        }, 15000);
+        return () => clearInterval(interval);
+      }, []);
+      const add = n => setNotifications(prev => [...prev, n]);
+      return (
+        <NotificationsContext.Provider value={{ notifications, add }}>{children}</NotificationsContext.Provider>
+      );
+    };
+
+    /* ------------------- Custom Hooks ------------------- */
+    const useDebounce = (value, delay) => {
+      const [debounced, setDebounced] = React.useState(value);
+      React.useEffect(() => {
+        const handler = setTimeout(() => setDebounced(value), delay);
+        return () => clearTimeout(handler);
+      }, [value, delay]);
+      return debounced;
+    };
+    const useInfiniteScroll = (callback) => {
+      const observer = React.useRef();
+      const lastElem = React.useCallback(node => {
+        if (observer.current) observer.current.disconnect();
+        observer.current = new IntersectionObserver(entries => {
+          if (entries[0].isIntersecting) callback();
+        });
+        if (node) observer.current.observe(node);
+      }, [callback]);
+      return lastElem;
+    };
+
+    /* ------------------- Mock API ------------------- */
+    const mockMetrics = { totalCourses: 24, activeStudents: 1248, completionRate: 78, avgRating: 4.7 };
+    const mockCourses = [
+      { id: 1, title: 'Advanced JavaScript Concepts', description: 'Learn modern JS patterns', progress: 75, status: 'Active' },
+      { id: 2, title: 'Data Science Fundamentals', description: 'Intro to data analysis', progress: 45, status: 'Draft' },
+      { id: 3, title: 'Web Development Bootcamp', description: 'Full‑stack with React & Node', progress: 90, status: 'Review' },
+    ];
+    const generateStudents = (cnt = 57) => {
+      const sts = ['Active', 'Pending', 'Inactive'];
+      return Array.from({ length: cnt }, (_, i) => ({
+        id: i + 1,
+        name: `Student ${i + 1}`,
+        email: `student${i + 1}@example.com`,
+        courses: Math.floor(Math.random() * 5) + 1,
+        status: sts[i % 3],
+      }));
+    };
+    const mockStudents = generateStudents();
+    const mockActivity = [
+      { id: 1, name: 'Alex Johnson', action: 'Completed Python Fundamentals', time: '2 hours ago' },
+      { id: 2, name: 'Sarah Williams', action: 'Enrolled in Data Science Bootcamp', time: '5 hours ago' },
+      { id: 3, name: 'Michael Chen', action: 'Submitted Web Design Project', time: 'Yesterday' },
+      { id: 4, name: 'Emma Rodriguez', action: 'Rated Machine Learning Course', time: '2 days ago' },
+    ];
+    const fetchMetrics = () => new Promise(r => setTimeout(() => r(mockMetrics), 800));
+    const fetchCourses = (search = '') => new Promise(r => {
+      const filtered = mockCourses.filter(c => c.title.toLowerCase().includes(search.toLowerCase()));
+      setTimeout(() => r(filtered), 800);
+    });
+    const fetchStudents = ({ page, limit }) => new Promise(r => {
+      const start = page * limit;
+      const slice = mockStudents.slice(start, start + limit);
+      const hasMore = start + limit < mockStudents.length;
+      setTimeout(() => r({ data: slice, hasMore }), 800);
+    });
+    const fetchActivity = () => new Promise(r => setTimeout(() => r(mockActivity), 800));
+
+    /* ------------------- Toast Container ------------------- */
+    const ToastContainer = () => {
+      const [toasts, setToasts] = React.useState([]);
+      React.useEffect(() => {
+        const handler = e => {
+          const { message, type } = e.detail;
+          const id = Date.now();
+          setToasts(prev => [...prev, { id, message, type }]);
+          setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
+        };
+        window.addEventListener('show-toast', handler);
+        return () => window.removeEventListener('show-toast', handler);
+      }, []);
+      return (
+        <div className="fixed top-4 right-4 space-y-2 z-50">
+          {toasts.map(t => (
+            <motion.div
+              key={t.id}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: 20 }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg text-white shadow-md ${
+                t.type === 'error' ? 'bg-red-500' : t.type === 'success' ? 'bg-green-500' : 'bg-primary'
+              }`}
+            >
+              <i className={`fas fa-${t.type === 'error' ? 'exclamation-circle' : t.type === 'success' ? 'check-circle' : 'info-circle'}`}></i>
+              <span>{t.message}</span>
+            </motion.div>
+          ))}
+        </div>
+      );
+    };
+
+    /* ------------------- Layout Components ------------------- */
+    const Sidebar = ({ pages, currentPage, setPage }) => {
+      const { user } = React.useContext(UserContext);
+      const { isDark, toggle } = React.useContext(ThemeContext);
+      const { lang, setLang } = React.useContext(LanguageContext);
+      const { notifications } = React.useContext(NotificationsContext);
+      const switchLang = () => setLang(lang === 'en' ? 'es' : 'en');
+
+      return (
+        <aside
+          className="w-64 bg-white dark:bg-slate-800 p-4 flex flex-col"
+          aria-label="Main navigation"
+        >
+          <div className="flex items-center mb-8">
+            <div className="bg-primary w-10 h-10 rounded-lg flex items-center justify-center text-white">
+              <i className="fas fa-graduation-cap"></i>
+            </div>
+            <h1 className="text-xl font-bold ml-3">CourseFlow</h1>
+          </div>
+
+          <nav className="flex-1">
+            <ul className="space-y-1">
+              {pages.map(p => (
+                <li key={p.key}>
+                  <button
+                    onClick={() => setPage(p.key)}
+                    className={`flex items-center w-full p-3 rounded-lg transition-colors duration-300 ${
+                      currentPage === p.key
+                        ? 'bg-primary text-white'
+                        : 'text-text hover:bg-slate-100 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    <i className={`fas ${p.icon} mr-3`}></i> {i18next.t(p.key)}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </nav>
+
+          <div className="mt-auto pt-8 space-y-2">
+            <button
+              onClick={toggle}
+              className="flex items-center w-full p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              <i className={`fas ${isDark ? 'fa-sun' : 'fa-moon'} mr-2`}></i>
+              {i18next.t(isDark ? 'light_mode' : 'dark_mode')}
+            </button>
+
+            <button
+              onClick={switchLang}
+              className="flex items-center w-full p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors"
+            >
+              <i className="fas fa-language mr-2"></i> {i18next.t('language')}
+            </button>
+
+            <div className="flex items-center p-2 rounded hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors cursor-pointer">
+              <i className="fas fa-bell mr-2"></i>
+              <span className="flex-1">{i18next.t('notifications')}</span>
+              {notifications.length > 0 && (
+                <span className="bg-accent text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {notifications.length}
+                </span>
+              )}
+            </div>
+
+            <div className="flex items-center space-x-2 cursor-pointer">
+              <div className="bg-gray-200 border-2 border-dashed rounded-full w-10 h-10"></div>
+              <span className="font-medium hidden md:inline">{user.name}</span>
+            </div>
+          </div>
+        </aside>
+      );
+    };
+
+    const Header = () => {
+      const { notifications } = React.useContext(NotificationsContext);
+      return (
+        <header className="flex items-center justify-between mb-4">
+          <h2 className="text-2xl font-bold">{i18next.t('dashboard')}</h2>
+          <div className="flex items-center space-x-3">
+            <button className="relative p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700 transition-colors">
+              <i className="fas fa-bell"></i>
+              {notifications.length > 0 && (
+                <span className="absolute -top-1 -right-1 bg-accent text-white text-xs rounded-full h-5 w-5 flex items-center justify-center">
+                  {notifications.length}
+                </span>
+              )}
+            </button>
+
+            <div className="flex items-center space-x-2">
+              <div className="bg-gray-200 border-2 border-dashed rounded-full w-10 h-10"></div>
+              <span className="font-medium hidden md:inline">Admin User</span>
+            </div>
+          </div>
+        </header>
+      );
+    };
+
+    /* ------------------- Reusable UI components ------------------- */
+    const MetricCard = ({ label, value, icon }) => (
+      <div className="card bg-primary text-white p-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <p className="text-sm font-medium">{label}</p>
+            <h3 className="text-3xl font-bold mt-1">{value}</h3>
+          </div>
+          <div className="bg-white bg-opacity-20 p-2 rounded-lg">
+            <i className={`fas ${icon} text-xl`}></i>
+          </div>
+        </div>
+      </div>
+    );
+
+    const ActivityFeed = () => {
+      const { data: activity, isLoading } = useQuery('activity', fetchActivity);
+      return (
+        <div className="card bg-white dark:bg-slate-800 p-4">
+          <h3 className="text-lg font-semibold mb-4">{i18next.t('recent_activity')}</h3>
+          {isLoading ? (
+            <div className="space-y-3">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="flex items-center space-x-3">
+                  <div className="skeleton w-10 h-10"></div>
+                  <div className="flex-1 space-y-1">
+                    <div className="skeleton h-4 w-1/3"></div>
+                    <div className="skeleton h-3 w-1/2"></div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {activity.map(act => (
+                <div key={act.id} className="flex items-start space-x-3">
+                  <div className="bg-gray-200 border-2 border-dashed rounded-full w-10 h-10 flex items-center justify-center">
+                    <i className="fas fa-user text-secondary"></i>
+                  </div>
+                  <div>
+                    <p className="font-medium">{act.name}</p>
+                    <p className="text-sm text-secondary">{act.action}</p>
+                    <p className="text-xs text-secondary">{act.time}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    /* ------------------- Charts ------------------- */
+    const EnrollmentChart = () => {
+      const canvasRef = React.useRef(null);
+      React.useEffect(() => {
+        const ctx = canvasRef.current.getContext('2d');
+        const chart = new Chart(ctx, {
+          type: 'line',
+          data: {
+            labels: ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun'],
+            datasets: [
+              {
+                label: i18next.t('new_enrollments'),
+                data: [120, 190, 150, 220, 180, 250],
+                borderColor: '#2563eb',
+                backgroundColor: 'rgba(37,99,235,0.1)',
+                tension: 0.4,
+                fill: true,
+              },
+              {
+                label: i18next.t('completions'),
+                data: [80, 120, 90, 150, 110, 180],
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16,185,129,0.1)',
+                tension: 0.4,
+                fill: true,
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true } },
+          },
+        });
+        return () => chart.destroy();
+      }, []);
+      return <div className="relative h-64"><canvas ref={canvasRef}></canvas></div>;
+    };
+
+    const CourseCompletionBar = () => {
+      const canvasRef = React.useRef(null);
+      React.useEffect(() => {
+        const ctx = canvasRef.current.getContext('2d');
+        const chart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ['Course A', 'Course B', 'Course C', 'Course D'],
+            datasets: [
+              {
+                label: i18next.t('completion_rate_by_course'),
+                data: [78, 65, 90, 55],
+                backgroundColor: '#10b981',
+              },
+            ],
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { position: 'top' } },
+            scales: { y: { beginAtZero: true, max: 100 } },
+          },
+        });
+        return () => chart.destroy();
+      }, []);
+      return <div className="relative h-64"><canvas ref={canvasRef}></canvas></div>;
+    };
+
+    /* ------------------- Page Components ------------------- */
+    const DashboardPage = () => {
+      const { data: metrics, isLoading: loadingMetrics } = useQuery('metrics', fetchMetrics);
+      const metricItems = [
+        { label: i18next.t('total_courses'), value: metrics?.totalCourses, icon: 'fa-book' },
+        { label: i18next.t('active_students'), value: metrics?.activeStudents, icon: 'fa-users' },
+        { label: i18next.t('completion_rate'), value: metrics?.completionRate + '%', icon: 'fa-check-circle' },
+        { label: i18next.t('avg_rating'), value: metrics?.avgRating, icon: 'fa-star' },
+      ];
+      return (
+        <section className="space-y-6">
+          {/* Metrics */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            {loadingMetrics
+              ? Array.from({ length: 4 }).map((_, i) => <div key={i} className="card bg-white dark:bg-slate-800 p-4 h-24 skeleton"></div>)
+              : metricItems.map((m, i) => <MetricCard key={i} label={m.label} value={m.value} icon={m.icon} />)}
+          </div>
+
+          {/* Chart + Activity */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <div className="lg:col-span-2 card bg-white dark:bg-slate-800 p-4">
+              <h3 className="text-lg font-semibold mb-2">{i18next.t('enrollment_trends')}</h3>
+              <EnrollmentChart />
+            </div>
+            <ActivityFeed />
+          </div>
+        </section>
+      );
+    };
+
+    const CoursesPage = () => {
+      const [search, setSearch] = React.useState('');
+      const debounced = useDebounce(search, 500);
+      const { data: courses, isLoading } = useQuery(['courses', debounced], () => fetchCourses(debounced));
+      const [selected, setSelected] = React.useState([]);
+      const toggleSelect = id => setSelected(prev => (prev.includes(id) ? prev.filter(i => i !== id) : [...prev, id]));
+
+      const queryClient = ReactQuery.useQueryClient();
+
+      // Drag‑and‑drop order (client‑side only)
+      const [draggedId, setDraggedId] = React.useState(null);
+      const handleDragStart = (e, id) => { setDraggedId(id); e.dataTransfer.effectAllowed = 'move'; };
+      const handleDrop = (e, targetId) => {
+        e.preventDefault();
+        if (!draggedId || draggedId === targetId) return;
+        const fromIdx = courses.findIndex(c => c.id === draggedId);
+        const toIdx = courses.findIndex(c => c.id === targetId);
+        const reordered = [...courses];
+        const [moved] = reordered.splice(fromIdx, 1);
+        reordered.splice(toIdx, 0, moved);
+        queryClient.setQueryData(['courses', debounced], reordered);
+        setDraggedId(null);
+      };
+
+      const deleteSelected = () => {
+        const remaining = courses.filter(c => !selected.includes(c.id));
+        queryClient.setQueryData(['courses', debounced], remaining);
+        setSelected([]);
+        showToast(i18next.t('delete_selected') + ' ✅', 'success');
+      };
+
+      return (
+        <section className="space-y-6">
+          {/* Header */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+            <h2 className="text-2xl font-bold">{i18next.t('courses')}</h2>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder={i18next.t('search_placeholder')}
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="pl-10 pr-4 py-2 border border-slate-300 dark:border-slate-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary"
+                />
+                <i className="fas fa-search absolute left-3 top-1/2 transform -translate-y-1/2 text-secondary"></i>
+              </div>
+              <button
+                className="bg-primary text-white px-4 py-2 rounded-lg flex items-center hover:shadow-md"
+                onClick={() => showToast(i18next.t('course_added'), 'success')}
+              >
+                <i className="fas fa-plus mr-2"></i>{i18next.t('add_course')}
+              </button>
+            </div>
+          </div>
+
+          {/* Bulk actions */}
+          {selected.length > 0 && (
+            <div className="flex items-center space-x-2">
+              <button
+                className="bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                onClick={deleteSelected}
+              >
+                {i18next.t('delete_selected')}
+              </button>
+              <span className="text-sm">{selected.length} {i18next.t('selected')}</span>
+            </div>
+          )}
+
+          {/* Course cards */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {isLoading
+              ? Array.from({ length: 3 }).map((_, i) => <div key={i} className="card p-4 skeleton h-64"></div>)
+              : courses.map(course => (
+                  <div
+                    key={course.id}
+                    className="course-card card bg-white dark:bg-slate-800 p-4 flex flex-col"
+                    draggable
+                    onDragStart={e => handleDragStart(e, course.id)}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={e => handleDrop(e, course.id)}
+                  >
+                    <div className="bg-gray-200 border-2 border-dashed rounded-xl w-full h-32 mb-3"></div>
+                    <h3 className="font-semibold text-lg truncate">{course.title}</h3>
+                    <p className="text-sm text-secondary flex-1 mt-1">{course.description}</p>
+
+                    <div className="flex items-center justify-between mt-3">
+                      <span className="text-sm font-medium">{i18next.t('progress')}: {course.progress}%</span>
+                      <span
+                        className={`px-2 text-xs rounded ${
+                          course.status === 'Active'
+                            ? 'bg-green-100 text-green-800'
+                            : course.status === 'Draft'
+                              ? 'bg-yellow-100 text-yellow-800'
+                              : 'bg-blue-100 text-blue-800'
+                        }`}
+                      >
+                        {course.status}
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-200 rounded-full h-2 mt-2">
+                      <div
+                        className={`h-2 rounded-full ${
+                          course.status === 'Active'
+                            ? 'bg-primary'
+                            : course.status === 'Draft'
+                              ? 'bg-yellow-500'
+                              : 'bg-blue-500'
+                        }`}
+                        style={{ width: `${course.progress}%` }}
+                      ></div>
+                    </div>
+
+                    <div className="flex items-center mt-3">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(course.id)}
+                        onChange={() => toggleSelect(course.id)}
+                        className="form-checkbox h-4 w-4 text-primary rounded"
+                      />
+                      <div className="flex-1 text-right space-x-2">
+                        <button className="text-secondary hover:text-primary"><i className="fas fa-edit"></i></button>
+                        <button className="text-secondary hover:text-red-500"><i className="fas fa-trash"></i></button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+          </div>
+        </section>
+      );
+    };
+
+    const StudentsPage = () => {
+      const LIMIT = 10;
+      const [page, setPage] = React.useState(0);
+      const { data, isLoading, isFetching } = useQuery(['students', page], () => fetchStudents({ page, limit: LIMIT }), {
+        keepPreviousData: true,
+      });
+
+      const loadMore = () => {
+        if (data?.hasMore) setPage(prev => prev + 1);
+      };
+      const lastRowRef = useInfiniteScroll(loadMore);
+
+      return (
+        <section className="space-y-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">{i18next.t('students')}</h2>
+            <div className="flex space-x-2">
+              <button className="bg-slate-100 dark:bg-slate-700 px-3 py-1 rounded hover:shadow-md">
+                <i className="fas fa-download mr-1"></i>{i18next.t('export')}
+              </button>
+              <button className="bg-primary text-white px-3 py-1 rounded hover:shadow-md">
+                <i className="fas fa-user-plus mr-1"></i>{i18next.t('add_course')}
+              </button>
+            </div>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-slate-200 dark:divide-slate-700">
+              <thead className="bg-slate-50 dark:bg-slate-900">
+                <tr>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-secondary uppercase tracking-wider">Student</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-secondary uppercase tracking-wider">Email</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-secondary uppercase tracking-wider">Courses</th>
+                  <th className="px-4 py-2 text-left text-xs font-medium text-secondary uppercase tracking-wider">Status</th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-slate-800 divide-y divide-slate-200 dark:divide-slate-700">
+                {isLoading
+                  ? Array.from({ length: LIMIT }).map((_, i) => (
+                      <tr key={i}>
+                        <td className="px-4 py-2"><div className="skeleton h-4 w-32"></div></td>
+                        <td className="px-4 py-2"><div className="skeleton h-4 w-48"></div></td>
+                        <td className="px-4 py-2"><div className="skeleton h-4 w-12"></div></td>
+                        <td className="px-4 py-2"><div className="skeleton h-4 w-20"></div></td>
+                      </tr>
+                    ))
+                  : data?.data.map((student, idx) => {
+                      const isLast = idx === data?.data.length - 1;
+                      return (
+                        <tr key={student.id} ref={isLast ? lastRowRef : null}>
+                          <td className="px-4 py-2 flex items-center space-x-2">
+                            <div className="bg-gray-200 border-2 border-dashed rounded-full w-8 h-8"></div>
+                            <span>{student.name}</span>
+                          </td>
+                          <td className="px-4 py-2">{student.email}</td>
+                          <td className="px-4 py-2">{student.courses}</td>
+                          <td className="px-4 py-2">
+                            <span className={`px-2 py-0.5 text-xs rounded ${
+                              student.status === 'Active' ? 'bg-green-100 text-green-800' :
+                              student.status === 'Pending' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>{i18next.t(student.status.toLowerCase())}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+              </tbody>
+            </table>
+          </div>
+
+          {isFetching && <p className="text-sm text-secondary mt-2">{i18next.t('loading')}...</p>}
+        </section>
+      );
+    };
+
+    const ContentPage = () => {
+      const quillRef = React.useRef(null);
+      const [files, setFiles] = React.useState([]);
+
+      React.useEffect(() => {
+        if (!quillRef.current) {
+          const quill = new Quill('#editor', {
+            theme: 'snow',
+            placeholder: i18next.t('write_content_here')
+          });
+          quillRef.current = quill;
+        }
+      }, []);
+
+      const onFilesAdded = e => setFiles(prev => [...prev, ...Array.from(e.target.files)]);
+      const onDrop = e => {
+        e.preventDefault();
+        setFiles(prev => [...prev, ...Array.from(e.dataTransfer.files)]);
+      };
+      const onDragOver = e => e.preventDefault();
+
+      return (
+        <section className="space-y-6">
+          <h2 className="text-2xl font-bold">{i18next.t('content')}</h2>
+
+          {/* Rich Text Editor */}
+          <div className="card bg-white dark:bg-slate-800 p-4">
+            <h3 className="font-semibold mb-2">{i18next.t('rich_text_editor')}</h3>
+            <div id="editor" className="h-64"></div>
+          </div>
+
+          {/* File upload */}
+          <div
+            className="card bg-white dark:bg-slate-800 p-4 border-dashed border-2 border-slate-300 dark:border-slate-600 rounded-lg flex flex-col items-center justify-center text-center cursor-pointer"
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onClick={() => document.getElementById('fileInput').click()}
+          >
+            <i className="fas fa-cloud-upload-alt text-3xl text-secondary mb-2"></i>
+            <p className="text-sm">{i18next.t('drag_drop_or_click')}</p>
+            <input id="fileInput" type="file" multiple className="hidden" onChange={onFilesAdded} />
+          </div>
+
+          {/* Media gallery */}
+          {files.length > 0 && (
+            <div className="card bg-white dark:bg-slate-800 p-4">
+              <h3 className="font-semibold mb-4">{i18next.t('media_gallery')}</h3>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {files.map((file, i) => (
+                  <div key={i} className="border border-slate-200 dark:border-slate-700 rounded-lg overflow-hidden">
+                    {file.type.startsWith('image/') ? (
+                      <img src={URL.createObjectURL(file)} alt={file.name}
+                           className="w-full h-32 object-cover" loading="lazy" />
+                    ) : (
+                      <div className="flex items-center justify-center h-32 bg-gray-100 dark:bg-slate-700">
+                        <i className="fas fa-file fa-2x text-secondary"></i>
+                      </div>
+                    )}
+                    <p className="text-xs p-1 truncate">{file.name}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      );
+    };
+
+    const AnalyticsPage = () => (
+      <section className="space-y-6">
+        <h2 className="text-2xl font-bold">{i18next.t('analytics')}</h2>
+        <div className="card bg-white dark:bg-slate-800 p-4">
+          <CourseCompletionBar />
+        </div>
+      </section>
+    );
+
+    const SettingsPage = () => (
+      <section className="space-y-6">
+        <h2 className="text-2xl font-bold">{i18next.t('settings')}</h2>
+        <div className="card bg-white dark:bg-slate-800 p-6">
+          <p>{i18next.t('settings')} page coming soon…</p>
+        </div>
+      </section>
+    );
+
+    /* ------------------- Main App ------------------- */
+    const App = () => {
+      const pages = [
+        { key: 'dashboard', icon: 'fa-home' },
+        { key: 'courses',   icon: 'fa-book' },
+        { key: 'students',  icon: 'fa-users' },
+        { key: 'content',   icon: 'fa-file-alt' },
+        { key: 'analytics', icon: 'fa-chart-line' },
+        { key: 'settings',  icon: 'fa-cog' },
+      ];
+      const [current, setCurrent] = React.useState('dashboard');
+
+      const queryClient = new ReactQuery.QueryClient();
+
+      const renderPage = () => {
+        switch (current) {
+          case 'dashboard': return <DashboardPage />;
+          case 'courses':   return <CoursesPage />;
+          case 'students':  return <StudentsPage />;
+          case 'content':  return <ContentPage />;
+          case 'analytics':return <AnalyticsPage />;
+          case 'settings': return <SettingsPage />;
+          default:          return <DashboardPage />;
+        }
+      };
+
+      return (
+        <ThemeProvider>
+          <LanguageProvider>
+            <UserProvider>
+              <NotificationsProvider>
+                <ReactQuery.QueryClientProvider client={queryClient}>
+                  <div className="flex min-h-screen">
+                    <Sidebar pages={pages} currentPage={current} setPage={setCurrent} />
+                    <main className="flex-1 p-6 overflow-auto">
+                      <Header />
+                      <React.Suspense fallback={<div className="skeleton h-64 w-full"></div>}>
+                        {renderPage()}
+                      </React.Suspense>
+                    </main>
+                  </div>
+                  <ToastContainer />
+                </ReactQuery.QueryClientProvider>
+              </NotificationsProvider>
+            </UserProvider>
+          </LanguageProvider>
+        </ThemeProvider>
+      );
+    };
+
+    // Render to DOM
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
